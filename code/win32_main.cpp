@@ -41,31 +41,25 @@
 #define kFrameTimeMicroSeconds 1000000.0f * kFrameTime
 
 #define kThreadCount 4
-#define kParticleCount 2000
-//#define kMultithreaded
+#define kParticleCount 10000
+#define kMultithreaded
 
 
 
 //
 // Particle
 //
-struct particle
-{
-    v3 P;
-    v3 dP;
-    f32 Duration = 4.0f;
-    f32 Elapsed = 0.0f;
-};
-
-
 struct particle_system
 {
-    particle *Data = nullptr;
+    v3 *P = nullptr;
+    v3 *dP = nullptr;
+    f32 *Duration = nullptr;
+    f32 *Elapsed = nullptr;
     
-    v3 P = v3_zero;
+    v3 Po = v3_zero;
     v3 ddPg = V3(0.0f, -9.8f, 0.0f); // Gravity acceleration
     
-    f32 force = 5.0f;
+    f32 Force = 8.0f;
     f32 dt = kFrameTime;
     b32 IsSimulating = true;
 };
@@ -99,36 +93,46 @@ unsigned int __stdcall ParticleUpdate(void* Data)
         {
             case WAIT_OBJECT_0: 
             {
-                for (u32 Index = Context->StartIndex; Index < Context->EndIndex; ++Index)
+                for (u32 Index = 0; Index < kParticleCount; ++Index)
                 {
-                    particle *Particle = &ParticleSystem->Data[Index];
+                    v3 *P = &ParticleSystem->P[Index];
+                    v3 *dP = &ParticleSystem->dP[Index];
+                    f32 *Duration = &ParticleSystem->Duration[Index];
+                    f32 *Elapsed = &ParticleSystem->Elapsed[Index];
                     
-                    Particle->Elapsed += dt;
-                    if (Particle->Elapsed > Particle->Duration)
+                    *Elapsed += dt;
+                    if (*Elapsed > *Duration)
                     {
-                        Particle->Elapsed = 0;
-                        Particle->P = ParticleSystem->P;
+                        *Elapsed = 0;
+                        *P = ParticleSystem->Po;
+                        *dP = ParticleSystem->Force * V3(0.0f, 1.0f, 0.0f);
                         
-                        f32 Radius = 1.0f;
+#if 1
+                        f32 Radius = 0.25f;
                         
+                        // NOTE(Marcus): This doesn't work at all, each thread will have each own
+                        //               version of Angle, which will have different values. It
+                        //               produces a somewhat cool effect, but we'll need to fix this.
+                        // TODO(Marcus): Create a cool (and sane) way of emitting the particles.
                         static f32 Angle = 0.0f;
-                        Angle += Tau32 / 60.0f;
+                        Angle += Tau32 / 565.0f;
                         if (Angle > Tau32)
                         {
                             Angle = Tau32 - Angle;
                         }
                         
-                        v3 F = V3(Radius * Cos(Angle), 1.0f, -Radius * Sin(Angle)) -  ParticleSystem->P;
-                        Particle->dP = ParticleSystem->force * F;
+                        v3 F = V3(Radius * Cos(Angle), 1.0f, -Radius * Sin(Angle)) -  ParticleSystem->Po;
+                        *dP = ParticleSystem->Force * F;
+#endif
                     }
                     else
                     {
-                        Particle->P += Particle->dP * dt;
-                        Particle->dP += ParticleSystem->ddPg * dt;
+                        *P  += *dP * dt;
+                        *dP += ParticleSystem->ddPg * dt;
                     }
                 }
                 
-                //printf("Thread# %u is done!\n", ThreadID);
+                printf("Thread# %u is done!\n", ThreadID);
                 ResetEvent(Context->Simulate);
                 SetEvent(Context->Finished);
             } break; 
@@ -285,7 +289,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     directx_buffer ConstantBuffer;
     shader_constants ShaderConstants;
     {
-        v4 CameraP = V4(2.0f, 2.0f, 10.0f, 1.0f);
+        //v4 CameraP = V4(5.0f, 5.0f, -5.0f, 1.0f);
+        v4 CameraP = V4(0.0f, 1.0f, -5.0f, 1.0f);
         f32 AspectRatio = (f32)DirectXState.Width / (f32)DirectXState.Height;
         
         ShaderConstants.ViewToClipMatrix  = M4Perspective(Pi32_2, AspectRatio, 1.0f, 100.0f);
@@ -333,16 +338,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     // Particles
     //
     particle_system ParticleSystem;
-    ParticleSystem.Data = (particle *)calloc(kParticleCount, sizeof(particle));
-    assert(ParticleSystem.Data);
+    ParticleSystem.Po = V3(0.0f, 0.5f, 0.0f);
+    
+    ParticleSystem.P = (v3 *)calloc(kParticleCount, sizeof(v3));
+    assert(ParticleSystem.P);
+    
+    ParticleSystem.dP = (v3 *)calloc(kParticleCount, sizeof(v3));
+    assert(ParticleSystem.dP);
+    
+    ParticleSystem.Duration = (f32 *)calloc(kParticleCount, sizeof(f32));
+    assert(ParticleSystem.Duration);
+    
+    ParticleSystem.Elapsed = (f32 *)calloc(kParticleCount, sizeof(f32));
+    assert(ParticleSystem.Elapsed);
     
     for (u32 Index = 0; Index < kParticleCount; ++Index)
     {
-        particle *Particle = &ParticleSystem.Data[Index];
-        Particle->P = ParticleSystem.P;
-        Particle->dP = ParticleSystem.force * V3(0.0f, 1.0f, 0.0f);
-        Particle->Duration = 2.0f;
-        Particle->Elapsed = 0.0f;
+        ParticleSystem.P[Index] = v3_zero;
+        ParticleSystem.dP[Index] = ParticleSystem.Force * V3(0.0f, 1.0f, 0.0f);;
+        ParticleSystem.Duration[Index] = 2.0f;
+        ParticleSystem.Elapsed[Index] = 0.0f;
     }
     
     
@@ -352,9 +367,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     directx_renderable RenderableParticles;
     {
         b32 Result = CreateRenderable(&DirectXState, &RenderableParticles,
-                                      ParticleSystem.Data, sizeof(v3), kParticleCount,
+                                      ParticleSystem.P, sizeof(v3), kParticleCount,
                                       D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
         assert(Result);
+    }
+    
+    
+    //
+    // An object that will act as the emitter for now
+    directx_renderable_indexed RenderableEmitter;
+    {
+        ply_state PlyState;
+        b32 Result = LoadPlyFile("..\\data\\emitter.ply", &PlyState);
+        assert(Result);
+        
+        Result = CreateRenderable(&DirectXState, &RenderableEmitter,
+                                  PlyState.Positions, sizeof(v3), PlyState.VertexCount,
+                                  PlyState.Indices, sizeof(u16), PlyState.IndexCount,
+                                  D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        assert(Result);
+        Free(&PlyState);
     }
     
     
@@ -501,31 +533,36 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         f32 dt = ParticleSystem.dt;
         for (u32 Index = 0; Index < kParticleCount; ++Index)
         {
-            particle *Particle = &ParticleSystem.Data[Index];
+            v3 *P = &ParticleSystem.P[Index];
+            v3 *dP = &ParticleSystem.dP[Index];
+            f32 *Duration = &ParticleSystem.Duration[Index];
+            f32 *Elapsed = &ParticleSystem.Elapsed[Index];
             
-            Particle->Elapsed += dt;
-            if (Particle->Elapsed > Particle->Duration)
+            *Elapsed += dt;
+            if (*Elapsed > *Duration)
             {
-                Particle->Elapsed = 0;
-                Particle->P = ParticleSystem.P;
+                *Elapsed = 0;
+                *P = ParticleSystem.Po;
+                *dP = ParticleSystem.Force * V3(0.0f, 1.0f, 0.0f);
                 
-                f32 Radius = 1.0f;
+#if 1
+                f32 Radius = 0.25f;
                 
                 static f32 Angle = 0.0f;
-                Angle += Tau32 / 60.0f;
-                
+                Angle += Tau32 / 365.0f;
                 if (Angle > Tau32)
                 {
-                    Angle = Angle = Tau32 - Angle;
+                    Angle = Tau32 - Angle;
                 }
                 
-                v3 F = V3(Radius * Cos(Angle), 1.0f, -Radius * Sin(Angle)) - ParticleSystem.P;
-                Particle->dP = ParticleSystem.force * F;
+                v3 F = V3(Radius * Cos(Angle), 1.0f, -Radius * Sin(Angle)) -  ParticleSystem.Po;
+                *dP = ParticleSystem.Force * F;
+#endif
             }
             else
             {
-                Particle->P += Particle->dP * dt;
-                Particle->dP += ParticleSystem.ddPg * dt;
+                *P  += *dP * dt;
+                *dP += ParticleSystem.ddPg * dt;
             }
         }
         
@@ -549,29 +586,48 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         
         
         //
-        // Render plane
+        // Render plane and emitter
         {
+            // Plane
             ShaderConstants.Colour = V4(0.65f, 0.65f, 0.7f, 1.0f);
             ShaderConstants.ObjectToWorldMatrix = m4_identity;
             UpdateBuffer(&DirectXState, &ConstantBuffer, &ShaderConstants, nullptr);
             
+            SetShader(&DirectXState, &DirectXState.vShaderBasic);
+            SetShader(&DirectXState, &DirectXState.pShaderBasic);
+            SetConstantBuffer(&DirectXState, &ConstantBuffer, 1);
+            
             RenderRenderable(&DirectXState, &RenderablePlane);
+            
+            
+            // Emitter
+            ShaderConstants.Colour = V4(0.85f, 0.0f, 0.0f, 1.0f);
+            ShaderConstants.ObjectToWorldMatrix = m4_identity;
+            UpdateBuffer(&DirectXState, &ConstantBuffer, &ShaderConstants, nullptr);
+            
+            RenderRenderable(&DirectXState, &RenderableEmitter);
         }
+        
         
         //
         // Render particles
         {
-            UpdateBuffer(&DirectXState, &RenderableParticles.VertexBuffer, ParticleSystem.Data, nullptr);
+            UpdateBuffer(&DirectXState, &RenderableParticles.VertexBuffer, ParticleSystem.P, nullptr);
             
-            //v3 *P = &ParticleSystem.Data[0].P;
+            //v3 *P = &ParticleSystem.P[0];
             //printf("(%5.2f, %5.2f, %5.2f)\n", P->x, P->y, P->z);
-            //ShaderConstants.ObjectToWorldMatrix = M4Translation(*P);
             
-            ShaderConstants.Colour = V4(1.0f, 0.0f, 0.0f, 1.0f);
+            ShaderConstants.Colour = V4(0.8f, 0.5f, 0.2f, 1.0f);
+            ShaderConstants.ObjectToWorldMatrix = m4_identity;
             UpdateBuffer(&DirectXState, &ConstantBuffer, &ShaderConstants, nullptr);
             
-            SetShader(&DirectXState, &DirectXState.gShader);
+            SetShader(&DirectXState, &DirectXState.vPointsToQuads);
+            SetShader(&DirectXState, &DirectXState.gPointsToQuads);
+            SetShader(&DirectXState, &DirectXState.pPointsToQuads);
+            SetConstantBuffer(&DirectXState, &ConstantBuffer, 1);
+            
             RenderRenderable(&DirectXState, &RenderableParticles);
+            
             SetShader(&DirectXState, (geometry_shader *)nullptr);
         }
         
@@ -636,6 +692,29 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
 #endif
     
     
+    //
+    // Free memory
+    // 
+    if (ParticleSystem.P)
+    {
+        free(ParticleSystem.P);
+    }
+    
+    if (ParticleSystem.dP)
+    {
+        free(ParticleSystem.dP);
+    }
+    
+    if (ParticleSystem.Duration)
+    {
+        free(ParticleSystem.Duration);
+    }
+    
+    if (ParticleSystem.Elapsed)
+    {
+        free(ParticleSystem.Elapsed);
+    }
+    
     
     //
     // @debug
@@ -669,6 +748,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     // Clean up
     //
     ReleaseDirectWrite(&DirectWriteState);
+    ReleaseRenderable(&RenderableEmitter);
     ReleaseRenderable(&RenderablePlane);
     ReleaseRenderable(&RenderableParticles);
     ReleaseBuffer(&ConstantBuffer);

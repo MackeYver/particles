@@ -207,7 +207,10 @@ struct directx_state
     
     vertex_shader   vShaderBasic;
     pixel_shader    pShaderBasic;
-    geometry_shader gShader;
+    
+    vertex_shader   vPointsToQuads;
+    pixel_shader    pPointsToQuads;
+    geometry_shader gPointsToQuads;
     
     vertex_shader vShaderFullscreenTexture;
     pixel_shader  pShaderFullscreenTexture;

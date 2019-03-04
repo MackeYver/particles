@@ -23,6 +23,10 @@
 //
 
 
+//
+// Structs
+//
+
 cbuffer ConstantBuffer : register(b0)
 {
 	float4x4 ViewToClip;
@@ -32,10 +36,9 @@ cbuffer ConstantBuffer : register(b0)
 	float4 Colour;
 };
 
-
 struct vs_output
 {
-	float4 P : SV_Position;
+	float4 P : Position;
 };
 
 struct ps_input
@@ -44,17 +47,74 @@ struct ps_input
 };
 
 
+//
+// Shaders
+//
+
+
+//
+// Vertex shader
+vs_output vMain(float3 P : Position)
+{
+	vs_output Output;
+	Output.P = mul(float4(P, 1.0f), ObjectToWorld);
+
+	return Output;
+}
+
 
 //
 // Geometry shader
-[maxvertexcount(1)]
-void gMain(point vs_output Pi[1] : Position, inout PointStream<ps_input> OutputStream)
-{   
-//	float3 Z = CameraP - Pi[0].P;
+[maxvertexcount(6)]
+void gMain(point vs_output Pi[1] : Position, inout TriangleStream<ps_input> OutputStream)
+//[maxvertexcount(1)]
+//void gMain(point vs_output Pi[1], inout PointStream<ps_input> OutputStream)
+{ 
 
-	ps_input Result;
-	Result.P = Pi[0].P;
-	OutputStream.Append(Result);	
-    
+	//
+	// Calculate new vertices
+	float3 Pw = Pi[0].P.xyz;
+	float3 Z = normalize(CameraP.xyz - Pw);
+	float3 Y = normalize(float3(0.0f, 1.0f, 0.0f));
+	float3 X = -cross(Z, Y);
+//	Y = cross(Z, X);
+
+	float k = 0.03f;
+	float k_2 = 0.015f;
+	float4 P0 = float4(Pw + ((k_2 * X) - (k_2 * Y)), 1.0f);
+	float4 P1 = float4(P0.xyz + (k * Y), 1.0f);
+	float4 P2 = float4(P1.xyz - (k * X), 1.0f);
+	float4 P3 = float4(P2.xyz - (k * Y), 1.0f);
+
+
+	//
+	// Transform to clip
+	float4x4 WorldToClip = mul(WorldToView, ViewToClip);
+	P0 = mul(P0, WorldToClip);
+	P1 = mul(P1, WorldToClip);
+	P2 = mul(P2, WorldToClip);
+	P3 = mul(P3, WorldToClip);
+
+
+	//
+	// First triangle
+	OutputStream.Append((ps_input)P0);
+	OutputStream.Append((ps_input)P3);
+	OutputStream.Append((ps_input)P2);
 	OutputStream.RestartStrip();
+
+	//
+	// Second
+	OutputStream.Append((ps_input)P0);
+	OutputStream.Append((ps_input)P2);
+	OutputStream.Append((ps_input)P1);
+	OutputStream.RestartStrip();
+}
+
+
+//
+// Pixel shader
+float4 pMain() : SV_Target
+{
+	return Colour;
 }

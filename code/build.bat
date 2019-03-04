@@ -12,11 +12,7 @@ IF "%1"=="r" SET BuildMode="release"
 IF "%2"=="s" SET CompileShaders=1
 
 IF %CompileShaders%==1 (
-  IF %BuildMode%=="debug" (
-    call shaders\build.bat d nc
-  ) ELSE (
-    call shaders\build.bat r nc
-  )
+  call shaders\build.bat nc
 )
 
 IF %errorlevel% NEQ 0 EXIT /b %errorlevel%

@@ -631,8 +631,8 @@ b32 CreateRenderTarget(directx_state *State, u32 Width, u32 Height, render_targe
     D3D11_DEPTH_STENCIL_DESC DepthStencilDesc;
     DepthStencilDesc.DepthEnable = true;
     DepthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-    //DepthStencilDesc.DepthFunc      = D3D11_COMPARISON_LESS;
-    DepthStencilDesc.DepthFunc      = D3D11_COMPARISON_ALWAYS;
+    DepthStencilDesc.DepthFunc      = D3D11_COMPARISON_LESS;
+    //DepthStencilDesc.DepthFunc      = D3D11_COMPARISON_ALWAYS;
     
     // Stencil test parameters
     DepthStencilDesc.StencilEnable = false;
@@ -737,13 +737,11 @@ b32 SetupDirectX(directx_state *State, directx_config *Config)
     D3D11_INPUT_ELEMENT_DESC E = {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0};
     
     CreateShader(State, "..\\build\\shaders\\vbasic.cso", &E, 1, &State->vShaderBasic);
-    SetShader(State, &State->vShaderBasic);
-    
     CreateShader(State, "..\\build\\shaders\\pbasic.cso", &State->pShaderBasic);
-    SetShader(State, &State->pShaderBasic);
     
-    CreateShader(State, "..\\build\\shaders\\gpoints_to_quads.cso", &State->gShader);
-    //SetShader(State, &State->gShader);
+    CreateShader(State, "..\\build\\shaders\\vpoints_to_quads.cso", &E, 1, &State->vPointsToQuads);
+    CreateShader(State, "..\\build\\shaders\\gpoints_to_quads.cso", &State->gPointsToQuads);
+    CreateShader(State, "..\\build\\shaders\\ppoints_to_quads.cso", &State->pPointsToQuads);
     
     //
     // Texture shader (texture but no lighting), renders a texture to the entire screen
@@ -980,6 +978,10 @@ void ReleaseDirectXState(directx_state *State)
         
         ReleaseShader(&State->pShaderBasic);
         ReleaseShader(&State->vShaderBasic);
+        
+        ReleaseShader(&State->vPointsToQuads);
+        ReleaseShader(&State->gPointsToQuads);
+        ReleaseShader(&State->pPointsToQuads);
         
         State->BackbufferView->Release();
         State->Backbuffer->Release();
