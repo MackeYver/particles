@@ -22,167 +22,61 @@
 // SOFTWARE.
 //
 
-
 #define UNICODE
 #define STRICT
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <windowsx.h>
 
 #include <assert.h>
 #include <stdio.h>
-#include <process.h>
 
 #include "types.h"
 #include "mathematics.h"
 #include "directX11_renderer.h"
 #include "ply_loader.h"
+#include "particle_system.h"
 
-#define kFrameTime (1.0f / 60.0f)
-#define kFrameTimeMicroSeconds 1000000.0f * kFrameTime
+constexpr f32 kFrameTime = 1.0f / 60.0f;
+constexpr f32 kFrameTimeMicroSeconds = 1000000.0f * kFrameTime;
+constexpr u32 kThreadCount = 4;
+constexpr u32 kParticleCount = 10000;
 
-#define kThreadCount 4
-#define kParticleCount 10000
-#define kMultithreaded
+struct mouse_state
+{
+    v2 P;
+    v2  RBPrevP;
+    b32 RBDown = false;
+};
+
+struct display_metrics
+{
+    u32 WindowWidth;
+    u32 WindowHeight;
+    
+    u32 ScreenWidth;
+    u32 ScreenHeight;
+};
+
+#include "camera.h"
+
+struct app_state
+{
+    mouse_state MouseState;
+    camera Camera;
+    
+    display_metrics Metrics; 
+    
+    HWND hWnd;
+};
+
+#include "win32_utilities.h"
 
 
 
 //
-// Particle
+// MAIN
 //
-struct particle_system
-{
-    v3 *P = nullptr;
-    v3 *dP = nullptr;
-    f32 *Duration = nullptr;
-    f32 *Elapsed = nullptr;
-    
-    v3 Po = v3_zero;
-    v3 ddPg = V3(0.0f, -9.8f, 0.0f); // Gravity acceleration
-    
-    f32 Force = 8.0f;
-    f32 dt = kFrameTime;
-    b32 IsSimulating = true;
-};
-
-
-struct thread_context
-{
-    particle_system *ParticleSystem = nullptr;
-    HANDLE Simulate;
-    HANDLE Finished;
-    HANDLE ThreadHandle;
-    u32 ThreadID;
-    u32 StartIndex = 0;
-    u32 EndIndex = 0;
-};
-
-
-unsigned int __stdcall ParticleUpdate(void* Data)
-{
-    thread_context *Context = (thread_context *)Data;
-    particle_system *ParticleSystem = Context->ParticleSystem;
-    u32 ThreadID = GetCurrentThreadId();
-    f32 dt = ParticleSystem->dt;
-    
-    printf("Thread# %u handles %u <= Index < %u\n", ThreadID, Context->StartIndex, Context->EndIndex);
-    
-    while (ParticleSystem->IsSimulating)
-    {
-        DWORD WaitResult = WaitForSingleObject(Context->Simulate, INFINITE);
-        switch (WaitResult) 
-        {
-            case WAIT_OBJECT_0: 
-            {
-                for (u32 Index = 0; Index < kParticleCount; ++Index)
-                {
-                    v3 *P = &ParticleSystem->P[Index];
-                    v3 *dP = &ParticleSystem->dP[Index];
-                    f32 *Duration = &ParticleSystem->Duration[Index];
-                    f32 *Elapsed = &ParticleSystem->Elapsed[Index];
-                    
-                    *Elapsed += dt;
-                    if (*Elapsed > *Duration)
-                    {
-                        *Elapsed = 0;
-                        *P = ParticleSystem->Po;
-                        *dP = ParticleSystem->Force * V3(0.0f, 1.0f, 0.0f);
-                        
-#if 1
-                        f32 Radius = 0.25f;
-                        
-                        // NOTE(Marcus): This doesn't work at all, each thread will have each own
-                        //               version of Angle, which will have different values. It
-                        //               produces a somewhat cool effect, but we'll need to fix this.
-                        // TODO(Marcus): Create a cool (and sane) way of emitting the particles.
-                        static f32 Angle = 0.0f;
-                        Angle += Tau32 / 565.0f;
-                        if (Angle > Tau32)
-                        {
-                            Angle = Tau32 - Angle;
-                        }
-                        
-                        v3 F = V3(Radius * Cos(Angle), 1.0f, -Radius * Sin(Angle)) -  ParticleSystem->Po;
-                        *dP = ParticleSystem->Force * F;
-#endif
-                    }
-                    else
-                    {
-                        *P  += *dP * dt;
-                        *dP += ParticleSystem->ddPg * dt;
-                    }
-                }
-                
-                printf("Thread# %u is done!\n", ThreadID);
-                ResetEvent(Context->Simulate);
-                SetEvent(Context->Finished);
-            } break; 
-            
-            default: 
-            {
-                printf("ThreadID %u, wait error (%d)\n", ThreadID, GetLastError()); 
-                return 0; 
-            } break;
-        }
-    }
-    printf("ThreadID %u, exiting...\n", ThreadID);
-    
-    return 0;
-}
-
-
-LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
-{
-    switch (uMsg) {
-        case WM_CLOSE: {
-        } break;
-        
-        case WM_ENTERSIZEMOVE: {
-        } break;
-        
-        case WM_EXITSIZEMOVE: {
-        } break;
-        
-        case WM_SIZE: {
-        } break;
-        
-        case WM_KEYDOWN: {
-            
-        } break;
-        
-        case WM_DESTROY: {
-            PostQuitMessage(0);
-            return 0;
-        } break;
-        
-        default: {
-            //DebugPrint(L"Message = %d\n", uMsg);
-        } break;
-    }
-    
-    return DefWindowProc(hWnd, uMsg, wParam, lParam);
-}
-
-
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine, int nShowCmd) 
 {
     //
@@ -195,68 +89,30 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
 #endif
     
     
-    
     //
-    // TODO(Marcus): Handle resolution in a proper way
-    u32 const Width = 1920;
-    u32 const Height = 1080;
+    // Initial state
+    app_state AppState;
+    AppState.Metrics.WindowWidth = 1920;
+    AppState.Metrics.WindowHeight = 1080;
+    AppState.Metrics.ScreenWidth  = GetSystemMetrics(SM_CXSCREEN);
+    AppState.Metrics.ScreenHeight = GetSystemMetrics(SM_CYSCREEN);
     
+    AppState.Camera.P = Normalize(V4(0.0f, 1.0f, 1.0f, 1.0f));
+    AppState.Camera.Distance = 200.0f;
+    UpdateCamera(&AppState.Camera, &AppState.MouseState, &AppState.Metrics);
     
     
     //
     // Create window
     //
-    HWND hWnd;
     {
-        wchar_t const ClassName[] = L"Beacon";
-        
-        WNDCLASS WC;
-        
-        WC.style = CS_VREDRAW | CS_HREDRAW;
-        WC.lpfnWndProc = WindowProc;
-        WC.cbClsExtra = 0;
-        WC.cbWndExtra = 0;
-        WC.hInstance = hInstance;
-        WC.hIcon = nullptr;
-        WC.hCursor = LoadCursor(nullptr, IDC_ARROW);
-        WC.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-        WC.lpszMenuName = nullptr;
-        WC.lpszClassName = ClassName;
-        
-        DWORD Style =  WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
-        
-        RECT Rect;
-        Rect.left = 0;
-        Rect.top = 0;
-        Rect.right = Width;
-        Rect.bottom = Height;
-        AdjustWindowRect(&Rect, Style, false);
-        
-        if (!RegisterClass(&WC)) 
+        u32 Error = CreateAppWindow(&AppState, hInstance, WindowProc);
+        if (Error)
         {
-            return 1;
-        }
-        
-        hWnd = CreateWindow(
-            ClassName,                      /* Class Name */
-            ClassName,                      /* Title */
-            Style,                          /* Style */
-            CW_USEDEFAULT, CW_USEDEFAULT,   /* Position */
-            Rect.right - Rect.left, 
-            Rect.bottom - Rect.top ,        /* Size */
-            nullptr,                        /* Parent */
-            nullptr,                        /* No menu */
-            hInstance,                      /* Instance */
-            0);                             /* No special parameters */
-        
-        if (!hWnd)
-        {
-            DWORD Error = GetLastError();
             OutputDebugString(L"Failed to create window!\n");
             return Error;
         }
     }
-    
     
     
     //
@@ -265,9 +121,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     directx_state DirectXState = {};
     {
         directx_config Config;
-        Config.Width = Width;
-        Config.Height = Height;
-        Config.hWnd = hWnd;
+        Config.Width = AppState.Metrics.WindowWidth;
+        Config.Height = AppState.Metrics.WindowHeight;
+        Config.hWnd = AppState.hWnd;
         
         SetupDirectX(&DirectXState, &Config);
     }
@@ -289,14 +145,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     directx_buffer ConstantBuffer;
     shader_constants ShaderConstants;
     {
-        //v4 CameraP = V4(5.0f, 5.0f, -5.0f, 1.0f);
-        v4 CameraP = V4(0.0f, 1.0f, -5.0f, 1.0f);
+        //v4 CameraP = V4(25.0f, 300.0f, -25.0f, 1.0f);
+        //v4 CameraP = V4(0.0f, 1.0f, -5.0f, 1.0f);
         f32 AspectRatio = (f32)DirectXState.Width / (f32)DirectXState.Height;
         
-        ShaderConstants.ViewToClipMatrix  = M4Perspective(Pi32_2, AspectRatio, 1.0f, 100.0f);
-        ShaderConstants.WorldToViewMatrix = M4LookAt(CameraP.xyz(), v3_zero);
+        ShaderConstants.ViewToClipMatrix  = M4Perspective(1.5f * Pi32_4, AspectRatio, 1.0f, 1000.0f);
+        //ShaderConstants.WorldToViewMatrix = M4LookAt(CameraP.xyz(), v3_zero);
+        ShaderConstants.WorldToViewMatrix = GetWorldToViewMatrix(&AppState.Camera);
         ShaderConstants.ObjectToWorldMatrix = m4_identity;
-        ShaderConstants.CameraP = CameraP;
+        //ShaderConstants.CameraP = CameraP;
+        ShaderConstants.CameraP = AppState.Camera.P;
         ShaderConstants.Colour = V4(0.65f, 0.65f, 0.7f, 1.0f);
         assert(sizeof(shader_constants) % 16 == 0);
         
@@ -307,58 +165,135 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     }
     
     
-    
     //
-    // A quad
-    //
-    directx_renderable RenderablePlane;
+    // X, Y and Z axis in world space
+    // @debug
+    directx_renderable RenderableAxisInWorld[3];
     {
-        f32 x = 10.0f;
-        f32 y =  0.0f;
-        f32 z = 10.0f;
-        
+        f32 l = 5.0f;
         v3 Vertices[] =
         {
-            {-x,  y,  z},
-            {-x,  y, -z},
-            { x,  y, -z},
+            {0.0f, 0.0f, 0.0f},
+            {   l, 0.0f, 0.0f},
             
-            { x,  y, -z},
-            { x,  y,  z},
-            {-x,  y,  z},
+            {0.0f, 0.0f, 0.0f},
+            {0.0f,    l, 0.0f},
+            
+            {0.0f, 0.0f, 0.0f},
+            {0.0f, 0.0f,    l},
         };
-        b32 Result = CreateRenderable(&DirectXState, &RenderablePlane, 
-                                      Vertices, sizeof(v3), sizeof(Vertices) / sizeof(*Vertices),
-                                      D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        
+        b32 Result;
+        for (u32 Index = 0; Index < 3; ++Index)
+        {
+            Result = CreateRenderable(&DirectXState, &RenderableAxisInWorld[Index],
+                                      Vertices + (2 * Index), sizeof(v3), 2,
+                                      D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
+            assert(Result);
+        }
+    }
+    
+    
+    //
+    // Load the terrain, height data is in a text file
+    //
+    directx_renderable_indexed RenderableTerrain;
+#if 0
+    {
+        ply_state PlyState;
+        b32 Result = LoadPlyFile("..\\data\\monkey.ply", &PlyState);
+        assert(Result);
+        
+        Result = CreateRenderable(&DirectXState, &RenderableTerrain, 
+                                  PlyState.Positions, sizeof(v3), PlyState.VertexCount,
+                                  PlyState.Indices , sizeof(u16), PlyState.IndexCount,
+                                  D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         assert(Result);
     }
-    
-    
-    //
-    // Particles
-    //
-    particle_system ParticleSystem;
-    ParticleSystem.Po = V3(0.0f, 0.5f, 0.0f);
-    
-    ParticleSystem.P = (v3 *)calloc(kParticleCount, sizeof(v3));
-    assert(ParticleSystem.P);
-    
-    ParticleSystem.dP = (v3 *)calloc(kParticleCount, sizeof(v3));
-    assert(ParticleSystem.dP);
-    
-    ParticleSystem.Duration = (f32 *)calloc(kParticleCount, sizeof(f32));
-    assert(ParticleSystem.Duration);
-    
-    ParticleSystem.Elapsed = (f32 *)calloc(kParticleCount, sizeof(f32));
-    assert(ParticleSystem.Elapsed);
-    
-    for (u32 Index = 0; Index < kParticleCount; ++Index)
+#else
     {
-        ParticleSystem.P[Index] = v3_zero;
-        ParticleSystem.dP[Index] = ParticleSystem.Force * V3(0.0f, 1.0f, 0.0f);;
-        ParticleSystem.Duration[Index] = 2.0f;
-        ParticleSystem.Elapsed[Index] = 0.0f;
+        // Source text file is 87 x 61 = 5307
+        u32 constexpr w = 87;
+        u32 constexpr h = 61;
+        u32 constexpr t = w * h;
+        
+        u32 *Heights = nullptr; // NOTE(Marcus): A bit of a waste, the max number is less than 255... 
+        {
+            Heights = (u32 *)malloc(t * sizeof(u32)); 
+            assert(Heights);
+            
+            FILE *File;
+            errno_t Error = fopen_s(&File, "..\\data\\volcano.txt", "r");
+            if (Error)
+            {
+                printf("Failed to open file, error: %u\n", Error);
+                assert(0);
+            }
+            
+            for (u32 Index = 0; Index < t; ++Index)
+            {
+                int ArgumentsScanned = fscanf_s(File, "%u", &Heights[Index]);
+                assert(ArgumentsScanned == 1);
+            }
+            fclose(File);
+        }
+        
+        u32 VertexCount = t;
+        v3 *Vertices = (v3 *)malloc(t * sizeof(v3));
+        assert(Vertices);
+        
+        u32 Index = 0;
+        for (u32 z = 0; z < h; ++z)
+        {
+            for (u32 x = 0; x < w; ++x)
+            {
+                //Vertices[Index] = V3((f32)x, (f32)Heights[Index], (f32)z);
+                Vertices[Index] = V3((f32)x, 0.2f * (f32)Heights[Index], (f32)z);
+                ++Index;
+            }
+        }
+        assert(Index == VertexCount);
+        
+        u16 *Indices = nullptr;
+        u32 IndexCount = 6 * (w - 1) * (h - 1);
+        size_t Size = IndexCount * sizeof(u16);
+        Indices = (u16 *)malloc(Size);
+        assert(Indices);
+        
+        Index = 0;
+        for (u32 z = 0; z < (h - 1); ++z)
+        {
+            for (u32 x = 0; x < (w - 1); ++x)
+            {
+                Indices[Index++] = (u16)((w * z) + x);
+                Indices[Index++] = (u16)((w * z) + x + 1);
+                Indices[Index++] = (u16)((w * (z + 1)) + x + 1);
+                
+                Indices[Index++] = (u16)((w * z) + x);
+                Indices[Index++] = (u16)((w * (z + 1)) + x + 1);
+                Indices[Index++] = (u16)((w * (z + 1)) + x);
+            }
+        }
+        assert(Index == IndexCount);
+        
+        b32 Result = CreateRenderable(&DirectXState, &RenderableTerrain, 
+                                      Vertices, sizeof(v3) , VertexCount,
+                                      Indices , sizeof(u16), IndexCount,
+                                      D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        assert(Result);
+        
+        free(Heights);
+        free(Vertices);
+        free(Indices);
     }
+#endif
+    
+    
+    
+    //
+    // Init particle system
+    particle_system ParticleSystem;
+    Init(&ParticleSystem, kParticleCount, kThreadCount, kFrameTime);
     
     
     //
@@ -373,81 +308,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     }
     
     
-    //
-    // An object that will act as the emitter for now
-    directx_renderable_indexed RenderableEmitter;
-    {
-        ply_state PlyState;
-        b32 Result = LoadPlyFile("..\\data\\emitter.ply", &PlyState);
-        assert(Result);
-        
-        Result = CreateRenderable(&DirectXState, &RenderableEmitter,
-                                  PlyState.Positions, sizeof(v3), PlyState.VertexCount,
-                                  PlyState.Indices, sizeof(u16), PlyState.IndexCount,
-                                  D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        assert(Result);
-        Free(&PlyState);
-    }
-    
-    
-#ifdef kMultithreaded
-    //
-    // Create threads
-    thread_context ThreadContext[kThreadCount];
-    {
-        u32 AllocatedIndices = 0;
-        u32 ParticlesPerThread = kParticleCount / kThreadCount;
-        
-        for (u32 Index = 0; Index < kThreadCount; ++Index)
-        {
-            ThreadContext[Index].ParticleSystem = &ParticleSystem;
-            
-            if (Index < kThreadCount - 1)
-            {
-                ThreadContext[Index].StartIndex = AllocatedIndices;
-                ThreadContext[Index].EndIndex = AllocatedIndices + ParticlesPerThread;
-                AllocatedIndices += ParticlesPerThread;
-            }
-            else
-            {
-                ThreadContext[Index].StartIndex = AllocatedIndices;
-                ThreadContext[Index].EndIndex = kParticleCount;
-            }
-            
-            ThreadContext[Index].Simulate = CreateEventA(nullptr, true, false, nullptr);
-            if(ThreadContext[Index].Simulate == nullptr)
-            {
-                printf("CreateEvent, Simulate, error: %d\n", GetLastError());
-                return 1;
-            }
-            
-            ThreadContext[Index].Finished = CreateEventA(nullptr, true, false, nullptr);
-            if(ThreadContext[Index].Finished == nullptr)
-            {
-                printf("CreateEvent, Finished, error: %d\n", GetLastError());
-                return 1;
-            }
-            
-            ThreadContext[Index].ThreadHandle = (HANDLE)_beginthreadex(0, 
-                                                                       0, 
-                                                                       &ParticleUpdate, 
-                                                                       (void *)&ThreadContext[Index], 
-                                                                       0,
-                                                                       &ThreadContext[Index].ThreadID);
-            if(ThreadContext[Index].ThreadHandle == nullptr)
-            {
-                printf("_beginthreadex error: %d\n", GetLastError());
-                return 1;
-            }
-            else
-            {
-                printf("Created thread %u.\n", ThreadContext[Index].ThreadID);
-            }
-        }
-    }
-#endif
-    
-    
     
     //
     // DirectWrite
@@ -460,8 +320,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     //
     // Show and update window
     //
-    ShowWindow(hWnd, nShowCmd);
-    UpdateWindow(hWnd);
+    ShowWindow(AppState.hWnd, nShowCmd);
+    UpdateWindow(AppState.hWnd);
     
     
     
@@ -504,69 +364,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         }
         
         
+        GetMouseP(&AppState.MouseState, AppState.Metrics.ScreenHeight);
+        UpdateCamera(&AppState.Camera, &AppState.MouseState, &AppState.Metrics);
+        
+        
         //
         // Particle simulation
         LARGE_INTEGER ParticleStartingTime;
         QueryPerformanceCounter(&ParticleStartingTime);
         
-#ifdef kMultithreaded
-        //
-        // Signal threads to do their thing
-        for (u32 Index = 0; Index < kThreadCount; ++Index)
-        {
-            b32 Result = SetEvent(ThreadContext[Index].Simulate);
-            if(!Result)
-            {
-                printf("SetEvent, thread %u error: %d\n", ThreadContext[Index].ThreadID, GetLastError());
-            }
-        }
+        Update(&ParticleSystem);
         
-        //
-        // Wait until all threads are finished
-        for (u32 Index = 0; Index < kThreadCount; ++Index)
-        {
-            WaitForSingleObject(ThreadContext[Index].Finished, INFINITE);
-            ResetEvent(ThreadContext[Index].Finished);
-        }
-#else
-        
-        f32 dt = ParticleSystem.dt;
-        for (u32 Index = 0; Index < kParticleCount; ++Index)
-        {
-            v3 *P = &ParticleSystem.P[Index];
-            v3 *dP = &ParticleSystem.dP[Index];
-            f32 *Duration = &ParticleSystem.Duration[Index];
-            f32 *Elapsed = &ParticleSystem.Elapsed[Index];
-            
-            *Elapsed += dt;
-            if (*Elapsed > *Duration)
-            {
-                *Elapsed = 0;
-                *P = ParticleSystem.Po;
-                *dP = ParticleSystem.Force * V3(0.0f, 1.0f, 0.0f);
-                
-#if 1
-                f32 Radius = 0.25f;
-                
-                static f32 Angle = 0.0f;
-                Angle += Tau32 / 365.0f;
-                if (Angle > Tau32)
-                {
-                    Angle = Tau32 - Angle;
-                }
-                
-                v3 F = V3(Radius * Cos(Angle), 1.0f, -Radius * Sin(Angle)) -  ParticleSystem.Po;
-                *dP = ParticleSystem.Force * F;
-#endif
-            }
-            else
-            {
-                *P  += *dP * dt;
-                *dP += ParticleSystem.ddPg * dt;
-            }
-        }
-        
-#endif
         LARGE_INTEGER ParticleEndingTime;
         QueryPerformanceCounter(&ParticleEndingTime);
         
@@ -584,38 +392,55 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         SetShader(&DirectXState, &DirectXState.pShaderBasic);
         BeginRendering(&DirectXState);
         
+        ShaderConstants.WorldToViewMatrix = GetWorldToViewMatrix(&AppState.Camera);
+        ShaderConstants.CameraP = AppState.Camera.P;
         
-        //
-        // Render plane and emitter
+        // Axis
         {
-            // Plane
+            SetShader(&DirectXState, &DirectXState.vShaderBasic);
+            SetShader(&DirectXState, &DirectXState.pShaderBasic);
+            SetConstantBuffer(&DirectXState, &ConstantBuffer, 1);
+            
+            v4 Colours[] = 
+            {
+                {1.0f, 0.0f, 0.0f, 1.0f},
+                {0.0f, 1.0f, 0.0f, 1.0f},
+                {0.0f, 0.0f, 1.0f, 1.0f},
+            };
+            
+            for (u32 Index = 0; Index < 3; ++Index)
+            {
+                ShaderConstants.Colour = Colours[Index];
+                UpdateBuffer(&DirectXState, &ConstantBuffer, &ShaderConstants, nullptr);
+                
+                RenderRenderable(&DirectXState, &RenderableAxisInWorld[Index]);
+            }
+        }
+        
+        // Terrain
+        {
             ShaderConstants.Colour = V4(0.65f, 0.65f, 0.7f, 1.0f);
-            ShaderConstants.ObjectToWorldMatrix = m4_identity;
+            ShaderConstants.ObjectToWorldMatrix = M4Translation(V3(-43.5f, -20.0f, -30.5f));
             UpdateBuffer(&DirectXState, &ConstantBuffer, &ShaderConstants, nullptr);
             
             SetShader(&DirectXState, &DirectXState.vShaderBasic);
             SetShader(&DirectXState, &DirectXState.pShaderBasic);
             SetConstantBuffer(&DirectXState, &ConstantBuffer, 1);
             
-            RenderRenderable(&DirectXState, &RenderablePlane);
-            
-            
-            // Emitter
-            ShaderConstants.Colour = V4(0.85f, 0.0f, 0.0f, 1.0f);
-            ShaderConstants.ObjectToWorldMatrix = m4_identity;
-            UpdateBuffer(&DirectXState, &ConstantBuffer, &ShaderConstants, nullptr);
-            
-            RenderRenderable(&DirectXState, &RenderableEmitter);
+            SetRasterizerState(&DirectXState, RasterizerState_Wireframe);
+            RenderRenderable(&DirectXState, &RenderableTerrain);
+            SetRasterizerState(&DirectXState, RasterizerState_Solid);
         }
         
         
-        //
         // Render particles
         {
             UpdateBuffer(&DirectXState, &RenderableParticles.VertexBuffer, ParticleSystem.P, nullptr);
             
-            //v3 *P = &ParticleSystem.P[0];
-            //printf("(%5.2f, %5.2f, %5.2f)\n", P->x, P->y, P->z);
+#if 0
+            v3 *P = &ParticleSystem.P[0];
+            printf("(%5.2f, %5.2f, %5.2f)\n", P->x, P->y, P->z);
+#endif
             
             ShaderConstants.Colour = V4(0.8f, 0.5f, 0.2f, 1.0f);
             ShaderConstants.ObjectToWorldMatrix = m4_identity;
@@ -657,8 +482,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         RunTime.QuadPart += ElapsedMicroseconds.QuadPart;
         if (RunTime.QuadPart > 1000000)
         {
+#if 0
             f32 ParticleFps = 1000000.0f * ((f32)FrameCount / (f32)ParticleTime.QuadPart);
             printf("fps: %u, particle fps = %f\n", FrameCount, ParticleFps);
+#endif
             RunTime.QuadPart = 0;
             FrameCount = 0;
             ParticleTime.QuadPart = 0;
@@ -670,50 +497,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     //
     // Close threads
     //
-#ifdef Multithreaded
-    ParticleSystem.IsSimulating = false;
-    for (u32 Index = 0; Index < kThreadCount; ++Index)
-    {
-        WaitForSingleObject(ThreadContext[Index].ThreadHandle, INFINITE);
-    }
+    ShutDown(&ParticleSystem);
     
-    for (u32 Index = 0; Index < kThreadCount; ++Index)
-    {
-        b32 Result = CloseHandle(ThreadContext[Index].ThreadHandle);
-        if(!Result)
-        {
-            printf("CloseHandle, thread %u error: %d\n", ThreadContext[Index].ThreadID, GetLastError());
-        }
-        else
-        {
-            printf("Closed thread %u.\n", ThreadContext[Index].ThreadID);
-        }
-    }
-#endif
-    
-    
-    //
-    // Free memory
-    // 
-    if (ParticleSystem.P)
-    {
-        free(ParticleSystem.P);
-    }
-    
-    if (ParticleSystem.dP)
-    {
-        free(ParticleSystem.dP);
-    }
-    
-    if (ParticleSystem.Duration)
-    {
-        free(ParticleSystem.Duration);
-    }
-    
-    if (ParticleSystem.Elapsed)
-    {
-        free(ParticleSystem.Elapsed);
-    }
     
     
     //
@@ -748,8 +533,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     // Clean up
     //
     ReleaseDirectWrite(&DirectWriteState);
-    ReleaseRenderable(&RenderableEmitter);
-    ReleaseRenderable(&RenderablePlane);
+    ReleaseRenderable(&RenderableTerrain);
     ReleaseRenderable(&RenderableParticles);
     ReleaseBuffer(&ConstantBuffer);
     ReleaseRenderTarget(&DirectXState.RenderTarget);

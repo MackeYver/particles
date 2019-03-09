@@ -192,6 +192,28 @@ void ReleaseRenderTarget(render_target *RenderTarget);
 
 //------------------------------------------------------------------------------------------------------
 //
+// Rasterizer_ state_
+//
+enum rasterizer_enum
+{
+    RasterizerState_Default,
+    RasterizerState_Solid,
+    RasterizerState_Wireframe,
+};
+
+struct rasterizer_states
+{
+    ID3D11RasterizerState *Ptr[3];;
+};
+
+b32 CreateRasterizerStates(directx_state *State);
+void SetRasterizerState(directx_state *State, rasterizer_enum Enum);
+
+
+
+
+//------------------------------------------------------------------------------------------------------
+//
 // Direct general state
 //
 struct directx_state
@@ -202,6 +224,8 @@ struct directx_state
     IDXGISwapChain *SwapChain = nullptr;
     ID3D11Texture2D *Backbuffer = nullptr;
     ID3D11RenderTargetView *BackbufferView = nullptr;
+    
+    rasterizer_states RasterizerStates;
     
     directx_renderable FullscreenQuadRenderable;
     

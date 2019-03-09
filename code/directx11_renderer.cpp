@@ -708,6 +708,63 @@ void ReleaseRenderTarget(render_target *RenderTarget)
 
 
 
+//------------------------------------------------------------------------------------------------------
+//
+// Rasterizer_ state_
+//
+b32 CreateRasterizerState(directx_state *State)
+{
+    assert(State);
+    assert(State->Device);
+    
+    D3D11_RASTERIZER_DESC Desc;
+    
+    //
+    // Solid rasterization
+    ZeroMemory(&Desc, sizeof(Desc));
+    Desc.FillMode = D3D11_FILL_SOLID;
+    Desc.CullMode = D3D11_CULL_BACK;
+    Desc.FrontCounterClockwise = false;
+    Desc.DepthClipEnable = true;
+    Desc.MultisampleEnable = false;
+    Desc.AntialiasedLineEnable = true;
+    
+    HRESULT Result = State->Device->CreateRasterizerState(&Desc, &State->RasterizerStates.Ptr[1]);
+    if (FAILED(Result))
+    {
+        printf("Failed to create solid rasterizer state!\n");
+        return false;
+    }
+    
+    
+    //
+    // Wireframe 
+    ZeroMemory(&Desc, sizeof(Desc));
+    Desc.FillMode = D3D11_FILL_WIREFRAME;
+    Desc.CullMode = D3D11_CULL_NONE;
+    Desc.MultisampleEnable = false;
+    Desc.AntialiasedLineEnable = true;
+    
+    Result = State->Device->CreateRasterizerState(&Desc, &State->RasterizerStates.Ptr[2]);
+    if (FAILED(Result))
+    {
+        printf("Failed to create wireframe rasterizer state!\n");
+        return false;
+    }
+    
+    return true;
+}
+
+void SetRasterizerState(directx_state *State, rasterizer_enum Enum)
+{
+    assert(State);
+    assert(State->DeviceContext);
+    assert(State->RasterizerStates.Ptr[Enum]);
+    State->DeviceContext->RSSetState(State->RasterizerStates.Ptr[Enum]);
+}
+
+
+
 
 //------------------------------------------------------------------------------------------------------
 //
@@ -789,6 +846,13 @@ b32 SetupDirectX(directx_state *State, directx_config *Config)
     // Fullscreen quad, is used for rendering the texture in RenderTarget to the screen 
     BoolResult = CreateFullScreenQuad(State);
     assert(BoolResult);
+    
+    
+    //
+    // Set rasterizer state
+    Result = CreateRasterizerState(State);
+    assert(Result);
+    SetRasterizerState(State, RasterizerState_Solid);
     
     return true;
 }

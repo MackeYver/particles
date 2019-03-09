@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v3" manifestVersion="1.0">
 
-  <assemblyIdentity type="win32" name="Marching_squares" version="0.0.0.0"/>
+  <assemblyIdentity type="win32" name="particles" version="0.0.0.0"/>
 
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>

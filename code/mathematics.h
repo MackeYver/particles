@@ -46,6 +46,9 @@
 inline u8 Max(u8 x, u8 y) {return x > y ? x : y;}
 inline u8 Min(u8 x, u8 y) {return x < y ? x : y;}
 
+inline f32 Max(f32 x, f32 y) {return x > y ? x : y;}
+inline f32 Min(f32 x, f32 y) {return x < y ? x : y;}
+
 
 
 //
@@ -62,6 +65,12 @@ inline f32 SquareRoot(f32 const& x) {
 
 inline f32 Cos(f32 const& a) {
     f32 Result = cosf(a);
+    return Result;
+}
+
+inline f32 ArcCos(f32 const& c)
+{
+    f32 Result = acosf(c);
     return Result;
 }
 
@@ -117,13 +126,6 @@ inline v2 V2(f32 x, f32 y) {
     v2 Result;
     Result.x = x;
     Result.y = y;
-    return Result;
-}
-
-inline v2 V2(u32 x, u32 y) {
-    v2 Result;
-    Result.x = (f32)x;
-    Result.y = (f32)y;
     return Result;
 }
 
@@ -244,6 +246,14 @@ inline v3 V3(f32 x, f32 y, f32 z) {
     return Result;
 }
 
+inline v3 V3(v2 A, f32 z) {
+    v3 Result;
+    Result.x = A.x;
+    Result.y = A.y;
+    Result.z = z;
+    return Result;
+}
+
 //
 // v3 vs v3
 inline v3 operator + (v3 const& A, v3 const& B) {
@@ -288,6 +298,16 @@ inline v3 operator * (v3 const& A, float const& b) {
 inline v3 operator * (float const& b, v3 const& A) {
     v3 Result = A * b;
     return Result;
+}
+
+inline v3 operator *= (v3& A, f32 const b) {
+    A = V3(b * A.x, b * A.y, b * A.z);
+    return A;
+}
+
+inline v3 operator /= (v3& A, f32 const b) {
+    A = V3(A.x / b, A.y / b, A.z / b);
+    return A;
 }
 
 //
@@ -497,15 +517,15 @@ union m4
 {
     v4 V[4];
     f32 E[4][4];
-    
-    v4 Col(u32 Index) {
-        return {E[0][Index], E[1][Index], E[2][Index], E[3][Index]};
-    }
-    
-    v4 Row(u32 Index) {
-        return V[Index];
-    }
 };
+
+inline v4 Col(m4 const&A, u32 Index) {
+    return {A.E[0][Index], A.E[1][Index], A.E[2][Index], A.E[3][Index]};
+}
+
+inline v4 Row(m4 const&A, u32 Index) {
+    return A.V[Index];
+}
 
 #define m4_identity {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}
 
@@ -516,6 +536,18 @@ inline m4 M4(v4 X, v4 Y, v4 Z)
         X.x , X.y , X.z , X.w,
         Y.x , Y.y , Y.z , Y.w,
         Z.x , Z.y , Z.z , Z.w,
+        0.0f, 0.0f, 0.0f, 1.0f
+    };
+    return Result;
+}
+
+inline m4 M4(v3 X, v3 Y, v3 Z)
+{
+    m4 Result =
+    {
+        X.x , X.y , X.z , 0.0f,
+        Y.x , Y.y , Y.z , 0.0f,
+        Z.x , Z.y , Z.z , 0.0f,
         0.0f, 0.0f, 0.0f, 1.0f
     };
     return Result;
@@ -539,6 +571,48 @@ inline m4 M4Translation(v3 T)
     Result.E[3][0] = T.x;
     Result.E[3][1] = T.y;
     Result.E[3][2] = T.z;
+    
+    return Result;
+}
+
+inline m4 M4RotationX(f32 Angle)
+{
+    f32 CosAngle = Cos(Angle);
+    f32 SinAngle = Sin(Angle);
+    
+    v3 X = V3(1.0f,      0.0f,     0.0f);
+    v3 Y = V3(0.0f,  CosAngle, SinAngle);
+    v3 Z = V3(0.0f, -SinAngle, CosAngle);
+    
+    m4 Result = M4(X, Y, Z);
+    
+    return Result;
+}
+
+inline m4 M4RotationY(f32 Angle)
+{
+    f32 CosAngle = Cos(Angle);
+    f32 SinAngle = Sin(Angle);
+    
+    v3 X = V3(CosAngle, 0.0f, -SinAngle);
+    v3 Y = V3(0.0f    , 1.0f,      0.0f);
+    v3 Z = V3(SinAngle, 0.0f,  CosAngle);
+    
+    m4 Result = M4(X, Y, Z);
+    
+    return Result;
+}
+
+inline m4 M4RotationZ(f32 Angle)
+{
+    f32 CosAngle = Cos(Angle);
+    f32 SinAngle = Sin(Angle);
+    
+    v3 X = V3( CosAngle, SinAngle, 0.0f);
+    v3 Y = V3(-SinAngle, CosAngle, 0.0f);
+    v3 Z = V3(0.0f    , 0.0f,      1.0f);
+    
+    m4 Result = M4(X, Y, Z);
     
     return Result;
 }
@@ -569,7 +643,22 @@ inline m4 operator * (m4& A, m4& B)
     {
         for (int C = 0; C < 4; ++C) 
         {
-            Result.E[R][C] = Dot(A.Row(R), B.Col(C));
+            Result.E[R][C] = Dot(Row(A, R), Col(B, C));
+        }
+    }
+    
+    return Result;
+}
+
+inline m4 operator * (m4 const& A, m4 const& B)
+{
+    m4 Result;
+    
+    for (int R = 0; R < 4; ++R) 
+    {
+        for (int C = 0; C < 4; ++C) 
+        {
+            Result.E[R][C] = Dot(Row(A, R), Col(B, C));
         }
     }
     
@@ -589,25 +678,25 @@ inline m4 operator * (m4& A, m4& B)
 //   0 1 2 3
 // 0 a b c d  0.0 0.1 0.2 0.3  
 
-inline v4 operator * (v4& V, m4& M)
+inline v4 operator * (v4& V, m4 const& M)
 {
     v4 Result;
     for (int Index = 0; Index < 4; ++Index) 
     {
-        Result.E[Index] = Dot(M.Col(Index), V);
+        Result.E[Index] = Dot(Col(M, Index), V);
     }
     
     return Result;
 }
 
-inline v4 operator *= (v4& V, m4& M)
+inline v4 operator *= (v4& V, m4 const& M)
 {
     V = V * M;
     return V;
 }
 
 
-inline m4 M4Scale(f32 Sx, f32 Sy, f32 Sz)
+inline m4 M4Scale(f32 const Sx, f32 const Sy, f32 const Sz)
 {
     v4 X = {  Sx, 0.0f, 0.0f, 0.0f};
     v4 Y = {0.0f,   Sy, 0.0f, 0.0f};
@@ -619,14 +708,14 @@ inline m4 M4Scale(f32 Sx, f32 Sy, f32 Sz)
 }
 
 
-inline m4 M4Translate(f32 dx, f32 dy, f32 dz)
+inline m4 M4Translate(f32 const dx, f32 const dy, f32 const dz)
 {
     m4 Result = m4_identity;
     Result.V[3] = {dx, dy, dz, 1.0f};
     return Result;
 }
 
-inline m4 M4Translate(v3 T)
+inline m4 M4Translate(v3 const T)
 {
     m4 Result = m4_identity;
     Result.V[3] = V4(T, 1.0f);
@@ -634,7 +723,7 @@ inline m4 M4Translate(v3 T)
 }
 
 
-inline f32 M4Minor(m4 *M, u32 Row, u32 Col)
+inline f32 M4Minor(m4 *M, u32 const Row, u32 const Col)
 {
     m3 M3;
     
@@ -660,7 +749,7 @@ inline f32 M4Minor(m4 *M, u32 Row, u32 Col)
     return M3Determinant(&M3);
 }
 
-inline f32 M4Cofactor(m4 *M, u32 Row, u32 Col)
+inline f32 M4Cofactor(m4 *M, u32 const Row, u32 const Col)
 {
     f32 Factor = powf(-1.0f, (f32)(Row + Col)); // TODO(Marcus): A bit expensive, make it faster!
     f32 Minor = M4Minor(M, Row, Col);
@@ -741,7 +830,7 @@ inline m4 M4Inverse(m4 *M, b32 *Invertible = nullptr)
 }
 
 
-inline m4 M4Perspective(f32 Fovx, f32 AspectRatio, f32 Near, f32 Far)
+inline m4 M4Perspective(f32 const Fovx, f32 const AspectRatio, f32 const Near, f32 const Far)
 {
     m4 Result = {};
     
@@ -769,7 +858,7 @@ inline m4 M4Perspective(f32 Fovx, f32 AspectRatio, f32 Near, f32 Far)
 #define assert(x)
 #endif
 
-inline m4 M4LookAt(v3 CameraP, v3 LookAtP) // TODO(Marcus): Sloooow!
+inline m4 M4LookAt(v3 const CameraP, v3 const LookAtP) // TODO(Marcus): Sloooow!
 {
     v3 Z = Normalize(CameraP - LookAtP);
     v3 X = Normalize(Cross(V3(0.0f, 1.0f, 0.0f), Z));
