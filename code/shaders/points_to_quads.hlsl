@@ -67,20 +67,23 @@ vs_output vMain(float3 P : Position)
 // Geometry shader
 [maxvertexcount(6)]
 void gMain(point vs_output Pi[1] : Position, inout TriangleStream<ps_input> OutputStream)
-//[maxvertexcount(1)]
-//void gMain(point vs_output Pi[1], inout PointStream<ps_input> OutputStream)
 { 
+	// 2     1
+	//
+	//    P
+	//
+	// 3     0
 
 	//
 	// Calculate new vertices
 	float3 Pw = Pi[0].P.xyz;
 	float3 Z = normalize(CameraP.xyz - Pw);
-	float3 Y = normalize(float3(0.0f, 1.0f, 0.0f));
-	float3 X = -cross(Z, Y);
-//	Y = cross(Z, X);
+	float3 Y = float3(0.0f, 1.0f, 0.0f);
+	float3 X = cross(Y, Z);
+	Y = cross(Z, X);
 
-	float k = 0.03f;
-	float k_2 = 0.015f;
+	float k = 0.3f;
+	float k_2 = 0.15f;
 	float4 P0 = float4(Pw + ((k_2 * X) - (k_2 * Y)), 1.0f);
 	float4 P1 = float4(P0.xyz + (k * Y), 1.0f);
 	float4 P2 = float4(P1.xyz - (k * X), 1.0f);
@@ -99,7 +102,7 @@ void gMain(point vs_output Pi[1] : Position, inout TriangleStream<ps_input> Outp
 	//
 	// First triangle
 	OutputStream.Append((ps_input)P0);
-	OutputStream.Append((ps_input)P3);
+	OutputStream.Append((ps_input)P1);
 	OutputStream.Append((ps_input)P2);
 	OutputStream.RestartStrip();
 
@@ -107,7 +110,7 @@ void gMain(point vs_output Pi[1] : Position, inout TriangleStream<ps_input> Outp
 	// Second
 	OutputStream.Append((ps_input)P0);
 	OutputStream.Append((ps_input)P2);
-	OutputStream.Append((ps_input)P1);
+	OutputStream.Append((ps_input)P3);
 	OutputStream.RestartStrip();
 }
 

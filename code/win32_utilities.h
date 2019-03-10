@@ -29,12 +29,13 @@
 //
 // Updates the MouseP in the app_state to the current position of the mouse in screen space,
 // with the origin in the bottom left of the screen.
-static void GetMouseP(mouse_state *State, u32 ScreenHeight)
+static void UpdateMouseState(mouse_state *State)
 {
     POINT Point;
     GetCursorPos(&Point);
+    State->PrevP = State->P;
     State->P.x = (f32)Point.x;
-    State->P.y = (f32)(ScreenHeight - Point.y - 1); // -1 due to being zero based
+    State->P.y = (f32)(State->Metrics->ScreenHeight - Point.y - 1); // -1 due to being zero based
 }
 
 
@@ -58,12 +59,10 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case WM_RBUTTONDOWN: {
             LONG_PTR Ptr = GetWindowLongPtr(hWnd, GWLP_USERDATA);
             app_state *AppState = reinterpret_cast<app_state *>(Ptr);
+            
             mouse_state *MouseState = &AppState->MouseState;
-            
             MouseState->RBDown = true;
-            
-            GetMouseP(MouseState, AppState->Metrics.ScreenHeight);
-            AppState->MouseState.RBPrevP = AppState->MouseState.P;
+            UpdateMouseState(MouseState);
             
             SetCapture(hWnd);
         } break;
@@ -71,8 +70,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case WM_RBUTTONUP: {
             LONG_PTR Ptr = GetWindowLongPtr(hWnd, GWLP_USERDATA);
             app_state *AppState = reinterpret_cast<app_state *>(Ptr);
-            mouse_state *MouseState = &AppState->MouseState;
             
+            mouse_state *MouseState = &AppState->MouseState;
             MouseState->RBDown = false;
             
             ReleaseCapture();
@@ -86,7 +85,6 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             LONG_PTR Ptr = GetWindowLongPtr(hWnd, GWLP_USERDATA);
             app_state *AppState = reinterpret_cast<app_state *>(Ptr);
             AppState->Camera.Distance -= Distance;
-            AppState->Camera.Distance = Min(250.0f, Max(5.0f, AppState->Camera.Distance));
         } break;
         
         case WM_DESTROY: {

@@ -724,7 +724,7 @@ b32 CreateRasterizerState(directx_state *State)
     ZeroMemory(&Desc, sizeof(Desc));
     Desc.FillMode = D3D11_FILL_SOLID;
     Desc.CullMode = D3D11_CULL_BACK;
-    Desc.FrontCounterClockwise = false;
+    Desc.FrontCounterClockwise = true;
     Desc.DepthClipEnable = true;
     Desc.MultisampleEnable = false;
     Desc.AntialiasedLineEnable = true;
@@ -870,6 +870,7 @@ b32 CreateFullScreenQuad(directx_state *State)
     
     t Vertices[] =
     {
+#if 0
         {{-1.0f, -1.0f}, {0.0f, 1.0f}},
         {{-1.0f,  1.0f}, {0.0f, 0.0f}},
         {{ 1.0f,  1.0f}, {1.0f, 0.0f}},
@@ -877,6 +878,15 @@ b32 CreateFullScreenQuad(directx_state *State)
         {{-1.0f, -1.0f}, {0.0f, 1.0f}},
         {{ 1.0f,  1.0f}, {1.0f, 0.0f}},
         {{ 1.0f, -1.0f}, {1.0f, 1.0f}},
+#else
+        {{-1.0f, -1.0f}, {0.0f, 1.0f}},
+        {{ 1.0f,  1.0f}, {1.0f, 0.0f}},
+        {{-1.0f,  1.0f}, {0.0f, 0.0f}},
+        
+        {{-1.0f, -1.0f}, {0.0f, 1.0f}},
+        {{ 1.0f, -1.0f}, {1.0f, 1.0f}},
+        {{ 1.0f,  1.0f}, {1.0f, 0.0f}},
+#endif
     };
     
     b32 Result = CreateRenderable(State, &State->FullscreenQuadRenderable, 

@@ -73,13 +73,8 @@ unsigned int __stdcall ParticleUpdate(void* Data)
                         
 #if 1
                         f32 Radius = 0.25f;
-                        
-                        // NOTE(Marcus): This doesn't work at all, each thread will have each own
-                        //               version of Angle, which will have different values. It
-                        //               produces a somewhat cool effect, but we'll need to fix this.
-                        // TODO(Marcus): Create a cool (and sane) way of emitting the particles.
                         static f32 Angle = 0.0f;
-                        Angle += Tau32 / 565.0f;
+                        Angle += Tau32 / 10.0f;
                         if (Angle > Tau32)
                         {
                             Angle = Tau32 - Angle;

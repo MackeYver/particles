@@ -876,5 +876,4 @@ inline m4 M4LookAt(v3 const CameraP, v3 const LookAtP) // TODO(Marcus): Sloooow!
 }
 
 
-
 #endif /* Mathematics_h */

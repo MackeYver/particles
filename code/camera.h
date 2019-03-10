@@ -26,33 +26,50 @@
 
 struct camera
 {
+    display_metrics *Metrics;
+    mouse_state *MouseState;
+    
     v4 P;
+    f32 OrbitAngle;
+    f32 PitchAngle;
     f32 Distance;
 };
 
 
 static m4 GetWorldToViewMatrix(camera *Camera)
 {
-    v3 P = Camera->P.xyz();
-    m4 Result = M4LookAt(Camera->Distance * P, v3_zero);
+    m4 Result = M4LookAt(Camera->P.xyz(), v3_zero);
     
     return Result;
 }
 
 
-static void UpdateCamera(camera *Camera, mouse_state *MouseState, display_metrics *Metrics)
+static void UpdateCamera(camera *Camera)
 {
+    mouse_state *MouseState = Camera->MouseState;
+    
     if (MouseState->RBDown)
     {
-        v2 M = MouseState->P - MouseState->RBPrevP;
-        f32 ry = -Tau32 * (M.x / Metrics->ScreenWidth);
-        f32 rx =  Tau32 * (M.y / Metrics->ScreenHeight);
+        display_metrics *Metrics = Camera->Metrics;
         
+        v2 M = MouseState->P - MouseState->PrevP;
+        
+        Camera->OrbitAngle += -Tau32 * (M.x / Metrics->ScreenWidth);
+        Camera->PitchAngle +=  Tau32 * (M.y / Metrics->ScreenHeight);
+        
+        Camera->Distance = Min(250.0f, Max(5.0f, Camera->Distance));
+        
+#if 0
         m4 Rx = M4RotationX(rx);
         m4 Ry = M4RotationY(ry);
         
         Camera->P *= Ry * Rx;
-        
-        MouseState->RBPrevP = MouseState->P;
+#endif
     }
+    //
+    // Calculate position
+    v3 P = Normalize(V3(Cos(Camera->OrbitAngle),
+                        Sin(Camera->PitchAngle),
+                        -Sin(Camera->OrbitAngle)));
+    Camera->P = V4(Camera->Distance * P, 1.0f);
 }

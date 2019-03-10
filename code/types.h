@@ -42,9 +42,11 @@ typedef int8_t   s8;
 typedef int32_t  s32;
 typedef int64_t  s64;
 
-#define f32Max FLT_MAX
-#define f32Min FLT_MIN
 typedef float f32;
+
+f32 constexpr f32Max = FLT_MAX;
+f32 constexpr f32Min = FLT_MIN;
+u32 constexpr u32Max = UINT32_MAX;
 
 typedef u32 b32;
 

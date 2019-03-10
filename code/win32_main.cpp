@@ -40,14 +40,7 @@
 constexpr f32 kFrameTime = 1.0f / 60.0f;
 constexpr f32 kFrameTimeMicroSeconds = 1000000.0f * kFrameTime;
 constexpr u32 kThreadCount = 4;
-constexpr u32 kParticleCount = 10000;
-
-struct mouse_state
-{
-    v2 P;
-    v2  RBPrevP;
-    b32 RBDown = false;
-};
+constexpr u32 kParticleCount = 10;
 
 struct display_metrics
 {
@@ -56,6 +49,15 @@ struct display_metrics
     
     u32 ScreenWidth;
     u32 ScreenHeight;
+};
+
+struct mouse_state
+{
+    display_metrics *Metrics;
+    
+    v2  P = v2_zero;
+    v2  PrevP = v2_zero;
+    b32 RBDown = false;
 };
 
 #include "camera.h"
@@ -97,9 +99,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     AppState.Metrics.ScreenWidth  = GetSystemMetrics(SM_CXSCREEN);
     AppState.Metrics.ScreenHeight = GetSystemMetrics(SM_CYSCREEN);
     
-    AppState.Camera.P = Normalize(V4(0.0f, 1.0f, 1.0f, 1.0f));
+    AppState.MouseState.Metrics = &AppState.Metrics;
+    
+    AppState.Camera.P = V4(0.0f, 1.0f, 1.0f, 1.0f);
     AppState.Camera.Distance = 200.0f;
-    UpdateCamera(&AppState.Camera, &AppState.MouseState, &AppState.Metrics);
+    AppState.Camera.OrbitAngle = 3.0f * Pi32_2;
+    AppState.Camera.PitchAngle = 3.0f * Pi32_4;
+    AppState.Camera.Metrics = &AppState.Metrics;
+    AppState.Camera.MouseState = &AppState.MouseState;
+    UpdateCamera(&AppState.Camera);
+    
+    f32 L = Length(AppState.Camera.P);
+    L;
     
     
     //
@@ -145,15 +156,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     directx_buffer ConstantBuffer;
     shader_constants ShaderConstants;
     {
-        //v4 CameraP = V4(25.0f, 300.0f, -25.0f, 1.0f);
-        //v4 CameraP = V4(0.0f, 1.0f, -5.0f, 1.0f);
         f32 AspectRatio = (f32)DirectXState.Width / (f32)DirectXState.Height;
         
         ShaderConstants.ViewToClipMatrix  = M4Perspective(1.5f * Pi32_4, AspectRatio, 1.0f, 1000.0f);
-        //ShaderConstants.WorldToViewMatrix = M4LookAt(CameraP.xyz(), v3_zero);
         ShaderConstants.WorldToViewMatrix = GetWorldToViewMatrix(&AppState.Camera);
         ShaderConstants.ObjectToWorldMatrix = m4_identity;
-        //ShaderConstants.CameraP = CameraP;
         ShaderConstants.CameraP = AppState.Camera.P;
         ShaderConstants.Colour = V4(0.65f, 0.65f, 0.7f, 1.0f);
         assert(sizeof(shader_constants) % 16 == 0);
@@ -163,6 +170,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         
         SetConstantBuffer(&DirectXState, &ConstantBuffer);
     }
+    
     
     
     //
@@ -213,8 +221,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
 #else
     {
         // Source text file is 87 x 61 = 5307
-        u32 constexpr w = 87;
-        u32 constexpr h = 61;
+        u32 constexpr w = 61;
+        u32 constexpr h = 87;
         u32 constexpr t = w * h;
         
         u32 *Heights = nullptr; // NOTE(Marcus): A bit of a waste, the max number is less than 255... 
@@ -247,8 +255,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         {
             for (u32 x = 0; x < w; ++x)
             {
-                //Vertices[Index] = V3((f32)x, (f32)Heights[Index], (f32)z);
-                Vertices[Index] = V3((f32)x, 0.2f * (f32)Heights[Index], (f32)z);
+                // The minimum height is 94 and the maximum is 195, we bring it up with 94 so
+                // that the new min is 0
+                Vertices[Index] = V3((f32)x, (f32)(Heights[Index] - 94), (f32)z);
                 ++Index;
             }
         }
@@ -265,13 +274,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         {
             for (u32 x = 0; x < (w - 1); ++x)
             {
-                Indices[Index++] = (u16)((w * z) + x);
-                Indices[Index++] = (u16)((w * z) + x + 1);
-                Indices[Index++] = (u16)((w * (z + 1)) + x + 1);
+                Indices[Index] = (u16)((w * z) + x);
+                Indices[Index + 1] = (u16)((w * (z + 1)) + x);
+                Indices[Index + 2] = (u16)((w * (z + 1)) + x + 1);
                 
-                Indices[Index++] = (u16)((w * z) + x);
-                Indices[Index++] = (u16)((w * (z + 1)) + x + 1);
-                Indices[Index++] = (u16)((w * (z + 1)) + x);
+                Indices[Index + 3] = (u16)((w * z) + x);
+                Indices[Index + 4] = (u16)((w * (z + 1)) + x + 1);
+                Indices[Index + 5] = (u16)((w * z) + x + 1);
+                
+                Index += 6;
             }
         }
         assert(Index == IndexCount);
@@ -364,8 +375,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         }
         
         
-        GetMouseP(&AppState.MouseState, AppState.Metrics.ScreenHeight);
-        UpdateCamera(&AppState.Camera, &AppState.MouseState, &AppState.Metrics);
+        UpdateMouseState(&AppState.MouseState);
+        UpdateCamera(&AppState.Camera);
         
         
         //
@@ -417,19 +428,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
             }
         }
         
+        
         // Terrain
         {
             ShaderConstants.Colour = V4(0.65f, 0.65f, 0.7f, 1.0f);
-            ShaderConstants.ObjectToWorldMatrix = M4Translation(V3(-43.5f, -20.0f, -30.5f));
+            ShaderConstants.ObjectToWorldMatrix = M4Translation(V3(-30.5f, -40.0f, -43.5f));
             UpdateBuffer(&DirectXState, &ConstantBuffer, &ShaderConstants, nullptr);
             
             SetShader(&DirectXState, &DirectXState.vShaderBasic);
             SetShader(&DirectXState, &DirectXState.pShaderBasic);
             SetConstantBuffer(&DirectXState, &ConstantBuffer, 1);
             
-            SetRasterizerState(&DirectXState, RasterizerState_Wireframe);
+            //SetRasterizerState(&DirectXState, RasterizerState_Wireframe);
             RenderRenderable(&DirectXState, &RenderableTerrain);
-            SetRasterizerState(&DirectXState, RasterizerState_Solid);
+            //SetRasterizerState(&DirectXState, RasterizerState_Solid);
         }
         
         
