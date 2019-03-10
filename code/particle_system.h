@@ -58,13 +58,15 @@ struct particle_system
     f32 *Elapsed = nullptr;
     
     thread_context *ThreadContext;
-    u32 ThreadCount;
     
     v3 Po = v3_zero;
     v3 ddPg = V3(0.0f, -9.8f, 0.0f); // Gravity acceleration
     
+    u32 ThreadCount;
+    u32 ParticleCount;
+    
     f32 dt;
-    f32 Force = 8.0f;
+    f32 Force = 10.0f;
     b32 IsSimulating = true;
 };
 

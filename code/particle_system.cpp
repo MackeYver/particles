@@ -49,6 +49,7 @@ unsigned int __stdcall ParticleUpdate(void* Data)
     printf("Thread# %u handles %u <= Index < %u\n", ThreadID, Context->StartIndex, Context->EndIndex);
     
     f32 dt = ParticleSystem->dt;
+    u32 ParticleCount = ParticleSystem->ParticleCount;
     
     while (ParticleSystem->IsSimulating)
     {
@@ -57,6 +58,9 @@ unsigned int __stdcall ParticleUpdate(void* Data)
         {
             case WAIT_OBJECT_0: 
             {
+                f32 Radius = 0.5f;
+                f32 Theta = Tau32 / (f32)ParticleCount;
+                f32 Angle = (f32)Context->StartIndex * Theta;
                 for (u32 Index = Context->StartIndex; Index < Context->EndIndex; ++Index)
                 {
                     v3 *P = &ParticleSystem->P[Index];
@@ -69,20 +73,16 @@ unsigned int __stdcall ParticleUpdate(void* Data)
                     {
                         *Elapsed = 0;
                         *P = ParticleSystem->Po;
-                        *dP = ParticleSystem->Force * V3(0.0f, 1.0f, 0.0f);
                         
-#if 1
-                        f32 Radius = 0.25f;
-                        static f32 Angle = 0.0f;
-                        Angle += Tau32 / 10.0f;
+                        Angle += Theta;
                         if (Angle > Tau32)
                         {
-                            Angle = Tau32 - Angle;
+                            Angle -= Tau32;
                         }
                         
-                        v3 F = V3(Radius * Cos(Angle), 1.0f, -Radius * Sin(Angle)) -  ParticleSystem->Po;
+                        v3 F = V3(Radius * Cos(Angle), 1.0f, -Radius * Sin(Angle));
+                        F = Normalize(F);
                         *dP = ParticleSystem->Force * F;
-#endif
                     }
                     else
                     {
@@ -111,8 +111,6 @@ unsigned int __stdcall ParticleUpdate(void* Data)
 
 void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f32 dt)
 {
-    ParticleSystem->Po = V3(0.0f, 0.5f, 0.0f);
-    
     ParticleSystem->P = (v3 *)calloc(ParticleCount, sizeof(v3));
     assert(ParticleSystem->P);
     
@@ -125,15 +123,28 @@ void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f
     ParticleSystem->Elapsed = (f32 *)calloc(ParticleCount, sizeof(f32));
     assert(ParticleSystem->Elapsed);
     
+    f32 Radius = 0.5f;
+    f32 Angle = 0.0f;
+    f32 Theta = Tau32 / (f32)ParticleCount;
     for (u32 Index = 0; Index < ParticleCount; ++Index)
     {
-        ParticleSystem->P[Index] = v3_zero;
-        ParticleSystem->dP[Index] = ParticleSystem->Force * V3(0.0f, 1.0f, 0.0f);;
-        ParticleSystem->Duration[Index] = 2.f;
+        ParticleSystem->P[Index] = ParticleSystem->Po;
+        ParticleSystem->Duration[Index] = 5.0f;
         ParticleSystem->Elapsed[Index] = 0.0f;
+        
+        Angle += Theta;
+        if (Angle > Tau32)
+        {
+            Angle = Tau32 - Angle;
+        }
+        
+        v3 F = V3(Radius * Cos(Angle), 1.0f, Radius * -Sin(Angle));
+        F = Normalize(F);
+        ParticleSystem->dP[Index]= ParticleSystem->Force * F;
     }
     
     ParticleSystem->dt = dt;
+    ParticleSystem->ParticleCount = ParticleCount;
     
     
     //
@@ -191,7 +202,7 @@ void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f
         }
         else
         {
-            printf("Created thread %u->\n", ThreadContext[Index]->ThreadID);
+            printf("Created thread %u->\n", ThreadContext[Index].ThreadID);
         }
     }
 }

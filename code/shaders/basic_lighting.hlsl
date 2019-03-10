@@ -22,17 +22,40 @@
 // SOFTWARE.
 //
 
+
 #include "common.h"
 
+struct vs_in
+{
+	float3 P : POSITION;
+	float3 N : NORMAL;
+};
+
+struct vs_out
+{
+	float4 Pc : SV_Position;
+	float4 Nw : NORMAL;
+	float4 Pw : POSITION;
+	float4 Co : COL0;
+};
 
 
 //
 // Vertex shader
-float4 vMain(float3 P : POSITION) : SV_Position
+vs_out vMain(vs_in In)
 {
 	float4x4 ObjectToView = mul(ObjectToWorld, WorldToView);
 	float4x4 ObjectToClip = mul(ObjectToView, ViewToClip);
-	float4 Result = mul(float4(P, 1.0f), ObjectToClip);
+
+	vs_out Result;
+	Result.Pc = mul(float4(In.P, 1.0f), ObjectToClip);
+	Result.Pw = mul(float4(In.P, 1.0f), ObjectToWorld);
+	Result.Nw = mul(float4(In.N, 0.0f), NormalToWorld);
+
+	float3 Gray  = float3(0.5f, 0.55f, 0.5f);
+	float3 Black = float3(0.15f, 0.15f, 0.15f);
+	float f = In.P.y / 101.0f;
+	Result.Co = float4(lerp(Gray, Black, f), 1.0f);
 
 	return Result;
 }
@@ -40,7 +63,24 @@ float4 vMain(float3 P : POSITION) : SV_Position
 
 //
 // Pixel shader
-float4 pMain() : SV_TARGET
+float4 pMain(vs_out In) : SV_TARGET
 {
-	return Colour;
+	// All is done in world space
+	float3 L = normalize(LightP.xyz - In.Pw.xyz);	
+	float3 N = normalize(In.Nw.xyz);
+	//float4 E = normalize(CameraP - In.Pw);
+
+	float3 ResultantColour = (Colour.rgb * In.Co.rgb);
+	float AmbientIntensity = 0.3f;
+	float3 AmbientLight = ResultantColour * AmbientIntensity;
+
+	float DiffuseIntensity = max(dot(N, L), 0.0);
+	float3 DiffuseLight = ResultantColour * DiffuseIntensity;
+
+#if 1
+	return float4(AmbientLight + DiffuseLight, 1.0f);
+#else
+//	return float4(In.Nw.xyz, 1.0f);
+	return float4(N, 1.0f);
+#endif
 }

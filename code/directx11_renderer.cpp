@@ -793,12 +793,24 @@ b32 SetupDirectX(directx_state *State, directx_config *Config)
     // Basic shader (no texture or lighting)
     D3D11_INPUT_ELEMENT_DESC E = {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0};
     
-    CreateShader(State, "..\\build\\shaders\\vbasic.cso", &E, 1, &State->vShaderBasic);
-    CreateShader(State, "..\\build\\shaders\\pbasic.cso", &State->pShaderBasic);
+    CreateShader(State, "..\\build\\shaders\\vbasic.cso", &E, 1, &State->vBasic);
+    CreateShader(State, "..\\build\\shaders\\pbasic.cso", &State->pBasic);
     
     CreateShader(State, "..\\build\\shaders\\vpoints_to_quads.cso", &E, 1, &State->vPointsToQuads);
     CreateShader(State, "..\\build\\shaders\\gpoints_to_quads.cso", &State->gPointsToQuads);
     CreateShader(State, "..\\build\\shaders\\ppoints_to_quads.cso", &State->pPointsToQuads);
+    
+    
+    //
+    // Shader with lighting
+    D3D11_INPUT_ELEMENT_DESC El[] = 
+    {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"NORMAL"  , 0, DXGI_FORMAT_R32G32B32_FLOAT, 1, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    CreateShader(State, "..\\build\\shaders\\vbasic_lighting.cso", El, 2, &State->vBasicLighting);
+    CreateShader(State, "..\\build\\shaders\\pbasic_lighting.cso", &State->pBasicLighting);
+    
     
     //
     // Texture shader (texture but no lighting), renders a texture to the entire screen
@@ -807,8 +819,8 @@ b32 SetupDirectX(directx_state *State, directx_config *Config)
         {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0}
     };
-    CreateShader(State, "..\\build\\shaders\\vfullscreen_texture.cso", Es, 2, &State->vShaderFullscreenTexture);
-    CreateShader(State, "..\\build\\shaders\\pfullscreen_texture.cso", &State->pShaderFullscreenTexture);
+    CreateShader(State, "..\\build\\shaders\\vfullscreen_texture.cso", Es, 2, &State->vFullscreenTexture);
+    CreateShader(State, "..\\build\\shaders\\pfullscreen_texture.cso", &State->pFullscreenTexture);
     
     //
     // Sampler
@@ -1046,12 +1058,15 @@ void ReleaseDirectXState(directx_state *State)
     if (State)
     {
         ReleaseRenderable(&State->FullscreenQuadRenderable);
-        ReleaseShader(&State->pShaderFullscreenTexture);
-        ReleaseShader(&State->vShaderFullscreenTexture);
+        ReleaseShader(&State->pFullscreenTexture);
+        ReleaseShader(&State->vFullscreenTexture);
         State->Sampler->Release();
         
-        ReleaseShader(&State->pShaderBasic);
-        ReleaseShader(&State->vShaderBasic);
+        ReleaseShader(&State->pBasic);
+        ReleaseShader(&State->vBasic);
+        
+        ReleaseShader(&State->pBasicLighting);
+        ReleaseShader(&State->vBasicLighting);
         
         ReleaseShader(&State->vPointsToQuads);
         ReleaseShader(&State->gPointsToQuads);
@@ -1084,8 +1099,8 @@ void BeginRendering(directx_state *State)
 void EndRendering(directx_state *State)
 {
     assert(State);
-    assert(State->vShaderFullscreenTexture.Program);
-    assert(State->pShaderFullscreenTexture.Program);
+    assert(State->vFullscreenTexture.Program);
+    assert(State->pFullscreenTexture.Program);
     assert(State->RenderTarget.ShaderView);
     assert(State->Sampler);
     assert(State->SwapChain);
@@ -1095,8 +1110,8 @@ void EndRendering(directx_state *State)
     //
     /// Render texture to screen
     SetBackbufferAsRenderTarget(State);
-    SetShader(State, &State->vShaderFullscreenTexture);
-    SetShader(State, &State->pShaderFullscreenTexture);
+    SetShader(State, &State->vFullscreenTexture);
+    SetShader(State, &State->pFullscreenTexture);
     SetPixelShaderResource(State, 0, 1, &State->RenderTarget.ShaderView);
     SetPixelShaderSampler(State, 0, 1, &State->Sampler);
     

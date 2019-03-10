@@ -22,19 +22,8 @@
 // SOFTWARE.
 //
 
+#include "common.h"
 
-//
-// Structs
-//
-
-cbuffer ConstantBuffer : register(b0)
-{
-	float4x4 ViewToClip;
-	float4x4 WorldToView;
-	float4x4 ObjectToWorld;
-	float4 CameraP;
-	float4 Colour;
-};
 
 struct vs_output
 {
@@ -46,10 +35,6 @@ struct ps_input
 	float4 P : SV_Position;
 };
 
-
-//
-// Shaders
-//
 
 
 //
@@ -68,12 +53,6 @@ vs_output vMain(float3 P : Position)
 [maxvertexcount(6)]
 void gMain(point vs_output Pi[1] : Position, inout TriangleStream<ps_input> OutputStream)
 { 
-	// 2     1
-	//
-	//    P
-	//
-	// 3     0
-
 	//
 	// Calculate new vertices
 	float3 Pw = Pi[0].P.xyz;
@@ -82,13 +61,12 @@ void gMain(point vs_output Pi[1] : Position, inout TriangleStream<ps_input> Outp
 	float3 X = cross(Y, Z);
 	Y = cross(Z, X);
 
-	float k = 0.3f;
-	float k_2 = 0.15f;
+	float k = 1.0f;
+	float k_2 = 0.5f;
 	float4 P0 = float4(Pw + ((k_2 * X) - (k_2 * Y)), 1.0f);
 	float4 P1 = float4(P0.xyz + (k * Y), 1.0f);
 	float4 P2 = float4(P1.xyz - (k * X), 1.0f);
 	float4 P3 = float4(P2.xyz - (k * Y), 1.0f);
-
 
 	//
 	// Transform to clip
@@ -97,7 +75,6 @@ void gMain(point vs_output Pi[1] : Position, inout TriangleStream<ps_input> Outp
 	P1 = mul(P1, WorldToClip);
 	P2 = mul(P2, WorldToClip);
 	P3 = mul(P3, WorldToClip);
-
 
 	//
 	// First triangle

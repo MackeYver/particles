@@ -23,42 +23,13 @@
 //
 
 
-struct VSInput
+cbuffer ConstantBuffer : register(b0)
 {
-	float2 P : POSITION0;
-	float2 T : TEXCOORD0;
+	float4x4 ViewToClip;
+	float4x4 WorldToView;
+    float4x4 ObjectToWorld;
+    float4x4 NormalToWorld;
+    float4 Colour;
+	float4 CameraP;
+    float4 LightP;
 };
-
-struct PSInput
-{	
-	float4 P : SV_Position;
-	float2 T : TEXCOORD0;
-};
-
-
-Texture2D    gTexture : register(t0);
-SamplerState gSampler : register(s0);
-
-
-
-//
-// Vertex shader
-//
-PSInput vMain(VSInput In)
-{
-	PSInput Result;
-	Result.P = float4(In.P, 0.0f, 1.0f);
-	Result.T = In.T;
-
-	return Result;
-}
-
-
-
-//
-// Pixel shader
-//
-float4 pMain(PSInput In) : SV_TARGET
-{
-	return gTexture.Sample(gSampler, In.T);
-}

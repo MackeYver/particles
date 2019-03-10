@@ -229,15 +229,18 @@ struct directx_state
     
     directx_renderable FullscreenQuadRenderable;
     
-    vertex_shader   vShaderBasic;
-    pixel_shader    pShaderBasic;
+    vertex_shader   vBasic;
+    pixel_shader    pBasic;
+    
+    vertex_shader   vBasicLighting;
+    pixel_shader    pBasicLighting;
     
     vertex_shader   vPointsToQuads;
     pixel_shader    pPointsToQuads;
     geometry_shader gPointsToQuads;
     
-    vertex_shader vShaderFullscreenTexture;
-    pixel_shader  pShaderFullscreenTexture;
+    vertex_shader vFullscreenTexture;
+    pixel_shader  pFullscreenTexture;
     ID3D11SamplerState *Sampler;
     
     render_target RenderTarget;
