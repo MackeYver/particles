@@ -77,7 +77,7 @@ float4 pMain(vs_out In) : SV_TARGET
 	float DiffuseIntensity = max(dot(N, L), 0.0);
 	float3 DiffuseLight = ResultantColour * DiffuseIntensity;
 
-#if 1
+#if 0
 	return float4(AmbientLight + DiffuseLight, 1.0f);
 #else
 //	return float4(In.Nw.xyz, 1.0f);

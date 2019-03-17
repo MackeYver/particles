@@ -28,7 +28,7 @@
 #include <stdint.h>
 #include <float.h>
 
-
+#define ArrayCount(A) sizeof(A) / sizeof(*A)
 
 //
 // Typedefs

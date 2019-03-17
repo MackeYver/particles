@@ -33,16 +33,25 @@ struct camera
     f32 OrbitAngle;
     f32 PitchAngle;
     f32 Distance;
+    
+    f32 AspectRatio;
+    f32 Fov;
+    f32 ZMin;
+    f32 ZMax;
 };
 
 
 static m4 GetWorldToViewMatrix(camera *Camera)
 {
     m4 Result = M4LookAt(Camera->P, v3_zero);
-    
     return Result;
 }
 
+static m4 GetViewToClipMatrix(camera *Camera)
+{
+    m4 Result = M4Perspective(Camera->Fov, Camera->AspectRatio, Camera->ZMin, Camera->ZMax);
+    return Result;
+}
 
 static void UpdateCamera(camera *Camera)
 {

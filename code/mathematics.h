@@ -689,6 +689,17 @@ inline v4 operator * (v4& V, m4 const& M)
     return Result;
 }
 
+inline v4 operator * (v4 const& V, m4 const& M)
+{
+    v4 Result;
+    for (int Index = 0; Index < 4; ++Index) 
+    {
+        Result.E[Index] = Dot(Col(M, Index), V);
+    }
+    
+    return Result;
+}
+
 inline v4 operator *= (v4& V, m4 const& M)
 {
     V = V * M;

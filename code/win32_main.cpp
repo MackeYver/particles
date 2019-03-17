@@ -107,6 +107,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     AppState.Camera.PitchAngle = 3.0f * Pi32_4;
     AppState.Camera.Metrics = &AppState.Metrics;
     AppState.Camera.MouseState = &AppState.MouseState;
+    AppState.Camera.AspectRatio = (f32)AppState.Metrics.WindowWidth / (f32)AppState.Metrics.WindowHeight;
+    AppState.Camera.Fov = 1.5f * Pi32_4;
+    AppState.Camera.ZMin = 1.0f;
+    AppState.Camera.ZMax = 1000.0f;
     UpdateCamera(&AppState.Camera);
     
     
@@ -155,9 +159,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     directx_buffer ConstantBuffer;
     shader_constants ShaderConstants;
     {
-        f32 AspectRatio = (f32)DirectXState.Width / (f32)DirectXState.Height;
-        
-        ShaderConstants.ViewToClipMatrix  = M4Perspective(1.5f * Pi32_4, AspectRatio, 1.0f, 1000.0f);
+        ShaderConstants.ViewToClipMatrix  = GetViewToClipMatrix(&AppState.Camera);
         ShaderConstants.WorldToViewMatrix = GetWorldToViewMatrix(&AppState.Camera);
         ShaderConstants.ObjectToWorldMatrix = m4_identity;
         ShaderConstants.NormalToWorldMatrix = m4_identity;
@@ -173,9 +175,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     
     
     //
-    // X, Y and Z axis in world space (the fourth is light direction)
-    // @debug
-    directx_renderable RenderableAxisInWorld[3];
+    // X, Y and Z axes in world space
+    // The coordinates will be recalulcated each frame so the data below is a bit nonsense to be honest...
+    directx_renderable RenderableAxesInWorld[3];
     {
         f32 l = 5.0f;
         v3 Vertices[] =
@@ -193,7 +195,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         b32 Result;
         for (u32 Index = 0; Index < 3; ++Index)
         {
-            Result = CreateRenderable(&DirectXState, &RenderableAxisInWorld[Index],
+            Result = CreateRenderable(&DirectXState, &RenderableAxesInWorld[Index],
                                       Vertices + (2 * Index), sizeof(v3), 2,
                                       D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
             assert(Result);
@@ -222,6 +224,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     //
     directx_renderable_indexed RenderableTerrain;
     directx_buffer TerrainNormals;
+    u32 *Heights;
 #if 0
     {
         ply_state PlyState;
@@ -241,7 +244,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         u32 constexpr h = 87;
         u32 constexpr t = w * h;
         
-        u32 *Heights = nullptr; // NOTE(Marcus): A bit of a waste, the max number is less than 255... 
+        Heights = nullptr; // NOTE(Marcus): A bit of a waste, the max number is less than 255... 
         {
             Heights = (u32 *)malloc(t * sizeof(u32)); 
             assert(Heights);
@@ -266,17 +269,57 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         v3 *Vertices = (v3 *)malloc(t * sizeof(v3));
         assert(Vertices);
         
+        f32 Max = 0.0f;
+        f32 Min = f32Max;
+        
         u32 Index = 0;
         for (u32 z = 0; z < h; ++z)
         {
             for (u32 x = 0; x < w; ++x)
             {
-                // The minimum height is 94 and the maximum is 195, we bring it up with 94 so
-                // that the new min is 0
-                Vertices[Index++] = V3((f32)x, (f32)(Heights[Index] - 94), (f32)z);
+                f32 Height = (f32)(Heights[Index] - 94);
+                
+#if 0
+                //
+                // Smoothing
+                u32 Count = 1;
+                
+                if (x > 0) // Left
+                {
+                    Height += (f32)Heights[Index - 1];
+                    ++Count;
+                }
+                
+                if (x < (w - 1)) // Right
+                {
+                    Height += (f32)Heights[Index + 1];
+                    ++Count;
+                }
+                
+                if (z > 0) // Up
+                {
+                    Height += (f32)Heights[Index - w];
+                    ++Count;
+                }
+                
+                if (z < (h - 1)) // Down
+                {
+                    Height += (f32)Heights[Index + w];
+                    ++Count;
+                }
+                
+                Height /= (f32)Count;
+                Heights[Index] = (u32)Height;
+                
+                Max = Height > Max ? Height : Max;
+                Min = Height < Min ? Height : Min;
+#endif
+                Vertices[Index++] = V3((f32)x, Height, (f32)z);
             }
         }
         assert(Index == VertexCount);
+        
+        printf("Min = %f, Max = %f\n", Min, Max);
         
         u16 *Indices = nullptr;
         u32 IndexCount = 6 * (w - 1) * (h - 1);
@@ -284,6 +327,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         Indices = (u16 *)malloc(Size);
         assert(Indices);
         
+        
+        //
+        // Generate indices
         Index = 0;
         for (u32 z = 0; z < (h - 1); ++z)
         {
@@ -387,7 +433,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         assert(Result);
         
         
-        free(Heights);
         free(Vertices);
         free(Indices);
         free(Normals);
@@ -500,11 +545,38 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         SetShader(&DirectXState, &DirectXState.pBasic);
         BeginRendering(&DirectXState);
         
-        ShaderConstants.WorldToViewMatrix = GetWorldToViewMatrix(&AppState.Camera);
-        ShaderConstants.CameraP = V4(AppState.Camera.P, 1.0f);
         
-        // Axis
+        // Axes
         {
+            {
+                m4 WorldToClipMatrix = GetWorldToViewMatrix(&AppState.Camera) *GetViewToClipMatrix(&AppState.Camera);
+                
+                v3 Vo = V3(-0.95f, -0.93f, 0.0f);
+                f32 l = 5.0f;
+                v3 X  = Normalize((V4(l, 0.0f, 0.0f, 1.0f) * WorldToClipMatrix).xyz());
+                v3 Y  = Normalize((V4(0.0f, l, 0.0f, 1.0f) * WorldToClipMatrix).xyz());
+                v3 Z  = Normalize((V4(0.0f, 0.0f, l, 1.0f) * WorldToClipMatrix).xyz());
+                
+                v3 Vertices[] =
+                {
+                    Vo,
+                    Vo + X,
+                    Vo,
+                    Vo + Y,
+                    Vo,
+                    Vo + Z,
+                };
+                
+                UpdateBuffer(&DirectXState, &RenderableAxesInWorld[0].VertexBuffer, &Vertices[0], nullptr);
+                UpdateBuffer(&DirectXState, &RenderableAxesInWorld[1].VertexBuffer, &Vertices[2], nullptr);
+                UpdateBuffer(&DirectXState, &RenderableAxesInWorld[2].VertexBuffer, &Vertices[4], nullptr);
+            }
+            
+            ShaderConstants.ViewToClipMatrix  = m4_identity;
+            ShaderConstants.WorldToViewMatrix = m4_identity;
+            ShaderConstants.ObjectToWorldMatrix = m4_identity;
+            ShaderConstants.NormalToWorldMatrix = m4_identity;
+            
             SetShader(&DirectXState, &DirectXState.vBasic);
             SetShader(&DirectXState, &DirectXState.pBasic);
             SetConstantBuffer(&DirectXState, &ConstantBuffer, 0);
@@ -521,9 +593,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
                 ShaderConstants.Colour = Colours[Index];
                 UpdateBuffer(&DirectXState, &ConstantBuffer, &ShaderConstants, nullptr);
                 
-                RenderRenderable(&DirectXState, &RenderableAxisInWorld[Index]);
+                RenderRenderable(&DirectXState, &RenderableAxesInWorld[Index]);
             }
         }
+        
+        
+        ShaderConstants.ViewToClipMatrix = GetViewToClipMatrix(&AppState.Camera);
+        ShaderConstants.WorldToViewMatrix = GetWorldToViewMatrix(&AppState.Camera);
+        ShaderConstants.ObjectToWorldMatrix = m4_identity;
+        ShaderConstants.NormalToWorldMatrix = m4_identity;
+        ShaderConstants.CameraP = V4(AppState.Camera.P, 1.0f);
         
         
         // Light directions
@@ -550,7 +629,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         // Render Terrain
         {
             ShaderConstants.Colour = V4(0.65f, 0.65f, 0.7f, 1.0f);
-            ShaderConstants.ObjectToWorldMatrix = M4Translation(V3(-30.5f, -40.0f, -43.5f));
+            ShaderConstants.ObjectToWorldMatrix = M4Translation(V3(-30.5f, -50.0f, -43.5f));
             
             b32 Invertible;
             m4 Mi = M4Inverse(&ShaderConstants.ObjectToWorldMatrix, &Invertible);
@@ -666,10 +745,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     //
     // Clean up
     //
+    free(Heights);
+    
     ReleaseDirectWrite(&DirectWriteState);
     for (u32 Index = 0; Index < 3; ++Index)
     {
-        ReleaseRenderable(&RenderableAxisInWorld[Index]);
+        ReleaseRenderable(&RenderableAxexInWorld[Index]);
     }
     ReleaseRenderable(&RenderableLightDirection);
     ReleaseRenderable(&RenderableTerrain);
