@@ -103,7 +103,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     
     AppState.Camera.P = V3(0.0f, 1.0f, 1.0f);
     AppState.Camera.Distance = 200.0f;
-    AppState.Camera.OrbitAngle = 3.0f * Pi32_2;
+    AppState.Camera.OrbitAngle = 3.0f * Pi32_4;
     AppState.Camera.PitchAngle = 3.0f * Pi32_4;
     AppState.Camera.Metrics = &AppState.Metrics;
     AppState.Camera.MouseState = &AppState.MouseState;
@@ -225,6 +225,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     directx_renderable_indexed RenderableTerrain;
     directx_buffer TerrainNormals;
     u32 *Heights;
+    v3 *Normals;
 #if 0
     {
         ply_state PlyState;
@@ -277,7 +278,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         {
             for (u32 x = 0; x < w; ++x)
             {
-                f32 Height = (f32)(Heights[Index] - 94);
+                f32 Height = (f32)Heights[Index];
                 
 #if 0
                 //
@@ -310,10 +311,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
                 
                 Height /= (f32)Count;
                 Heights[Index] = (u32)Height;
+#endif
                 
                 Max = Height > Max ? Height : Max;
                 Min = Height < Min ? Height : Min;
-#endif
+                
+                if (z == 0 && x == 0)
+                {
+                    Heights[Index] = 200;
+                    Height = (f32)Heights[Index];
+                }
+                
                 Vertices[Index++] = V3((f32)x, Height, (f32)z);
             }
         }
@@ -358,7 +366,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         
         //
         // Normals
-        v3 *Normals = (v3 *)malloc(VertexCount * sizeof(v3));
+        Normals = (v3 *)malloc(VertexCount * sizeof(v3));
         assert(Normals);
         
         Index = 0;
@@ -435,7 +443,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         
         free(Vertices);
         free(Indices);
-        free(Normals);
     }
 #endif
     
@@ -444,9 +451,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     //
     // Init particle system
     particle_system ParticleSystem;
-    ParticleSystem.Po = V3(-2.0f, 35.0f, 12.0f);
-    ParticleSystem.Force = 25.0f;
-    Init(&ParticleSystem, kParticleCount, kThreadCount, kFrameTime);
+    {
+        ParticleSystem.Po = V3(-2.0f, 35.0f, 12.0f);
+        ParticleSystem.Force = 25.0f;
+        
+        ParticleSystem.ObjectToWorldMatrix = m4_identity;//M4Translation(V3(-30.5f, -140.0f, -43.5f));
+        
+        b32 Invertible;
+        ParticleSystem.ObjectToTerrainMatrix = ParticleSystem.ObjectToWorldMatrix * M4Translation(V3(30.5f, 140.0f, 43.5f));
+        ParticleSystem.TerrainToObjectMatrix = M4Inverse(&ParticleSystem.ObjectToTerrainMatrix, &Invertible);
+        assert(Invertible);
+        
+        Init(&ParticleSystem, kParticleCount, kThreadCount, kFrameTime, Heights, 61, 87, Normals);
+    }
     
     
     //
@@ -629,7 +646,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         // Render Terrain
         {
             ShaderConstants.Colour = V4(0.65f, 0.65f, 0.7f, 1.0f);
-            ShaderConstants.ObjectToWorldMatrix = M4Translation(V3(-30.5f, -50.0f, -43.5f));
+            ShaderConstants.ObjectToWorldMatrix = M4Translation(V3(-30.5f, -140.0f, -43.5f));
+            //ShaderConstants.ObjectToWorldMatrix = m4_identity;
             
             b32 Invertible;
             m4 Mi = M4Inverse(&ShaderConstants.ObjectToWorldMatrix, &Invertible);
@@ -656,7 +674,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
             UpdateBuffer(&DirectXState, &RenderableParticles.VertexBuffer, ParticleSystem.P, nullptr);
             
             ShaderConstants.Colour = V4(0.8f, 0.5f, 0.2f, 1.0f);
-            ShaderConstants.ObjectToWorldMatrix = m4_identity;
+            ShaderConstants.ObjectToWorldMatrix = ParticleSystem.ObjectToWorldMatrix;
             UpdateBuffer(&DirectXState, &ConstantBuffer, &ShaderConstants, nullptr);
             
             SetShader(&DirectXState, &DirectXState.vPointsToQuads);
@@ -746,11 +764,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
     // Clean up
     //
     free(Heights);
+    free(Normals);
     
     ReleaseDirectWrite(&DirectWriteState);
     for (u32 Index = 0; Index < 3; ++Index)
     {
-        ReleaseRenderable(&RenderableAxexInWorld[Index]);
+        ReleaseRenderable(&RenderableAxesInWorld[Index]);
     }
     ReleaseRenderable(&RenderableLightDirection);
     ReleaseRenderable(&RenderableTerrain);

@@ -80,7 +80,7 @@ float4 pMain(vs_out In) : SV_TARGET
 #if 0
 	return float4(AmbientLight + DiffuseLight, 1.0f);
 #else
-//	return float4(In.Nw.xyz, 1.0f);
-	return float4(N, 1.0f);
+	return float4(In.Nw.xyz, 1.0f);
+//	return float4(N, 1.0f);
 #endif
 }

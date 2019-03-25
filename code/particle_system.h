@@ -38,9 +38,18 @@ struct particle_system;
 struct thread_context
 {
     particle_system *ParticleSystem = nullptr;
+    u32 *Heights;
+    v3 *Normals;
+    
     HANDLE Simulate;
     HANDLE Finished;
     HANDLE ThreadHandle;
+    
+    u32 ThreadCount;
+    
+    u32 Width;
+    u32 Height;
+    
     u32 ThreadID;
     u32 StartIndex;
     u32 EndIndex;
@@ -52,6 +61,10 @@ struct thread_context
 // 
 struct particle_system
 {
+    m4 ObjectToWorldMatrix;
+    m4 ObjectToTerrainMatrix;
+    m4 TerrainToObjectMatrix;
+    
     v3 *P = nullptr;
     v3 *dP = nullptr;
     f32 *Duration = nullptr;
@@ -62,7 +75,6 @@ struct particle_system
     v3 Po = v3_zero;
     v3 ddPg = V3(0.0f, -9.8f, 0.0f); // Gravity acceleration
     
-    u32 ThreadCount;
     u32 ParticleCount;
     
     f32 dt;
@@ -70,7 +82,7 @@ struct particle_system
     b32 IsSimulating = true;
 };
 
-void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f32 dt);
+void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f32 dt, 
+          u32 *Heights, u32 Width, u32 Height, v3 *Normals);
 void Update(particle_system *ParticleSystem);
-void Pause(particle_system *ParticleSystem);
 void ShutDown(particle_system *ParticleSystem);

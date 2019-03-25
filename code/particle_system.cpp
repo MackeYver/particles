@@ -26,26 +26,28 @@
 #include <stdlib.h>
 #include <process.h>
 
+#define UNUSED_VAR(x) x
+
 #if 0
 #include <stdio.h>
-#define UNUSED_VAR(x)
 #else
 #define printf(...)
-#define UNUSED_VAR(x) x;
 #endif
 
 
 
-//
-// Particle system
-// 
 unsigned int __stdcall ParticleUpdate(void* Data)
 {
     thread_context *Context = (thread_context *)Data;
     particle_system *ParticleSystem = Context->ParticleSystem;
+    
+    u32 *Heights = Context->Heights;
+    v3  *Normals = Context->Normals;
+    UNUSED_VAR(Heights);
+    UNUSED_VAR(Normals);
+    
     u32 ThreadID = GetCurrentThreadId();
     UNUSED_VAR(ThreadID);
-    
     printf("Thread# %u handles %u <= Index < %u\n", ThreadID, Context->StartIndex, Context->EndIndex);
     
     f32 dt = ParticleSystem->dt;
@@ -58,9 +60,10 @@ unsigned int __stdcall ParticleUpdate(void* Data)
         {
             case WAIT_OBJECT_0: 
             {
-                f32 Radius = 0.5f;
+                f32 Radius = 0.15f;
                 f32 Theta = Tau32 / (f32)ParticleCount;
                 f32 Angle = (f32)Context->StartIndex * Theta;
+                
                 for (u32 Index = Context->StartIndex; Index < Context->EndIndex; ++Index)
                 {
                     v3 *P = &ParticleSystem->P[Index];
@@ -86,8 +89,26 @@ unsigned int __stdcall ParticleUpdate(void* Data)
                     }
                     else
                     {
-                        *P  += *dP * dt;
+                        v4 Po = V4(*P + *dP * dt, 1.0f);
                         *dP += ParticleSystem->ddPg * dt;
+                        
+                        v4 Pt = Po * ParticleSystem->ObjectToTerrainMatrix;
+                        s32 x = (u32)Pt.x;
+                        s32 z = (u32)Pt.z;
+                        
+                        if ((0 <= x && x < (s32)Context->Width) && 
+                            (0 <= z && z < (s32)Context->Height))
+                        {
+                            u32 h = Heights[(Context->Width * z) + x];
+                            if (Pt.y < h)
+                            {
+                                Pt.y = (f32)h + 0.1f;
+                            }
+                        }
+                        
+                        
+                        Po = Pt * ParticleSystem->TerrainToObjectMatrix;
+                        *P = Po.xyz();
                     }
                 }
                 
@@ -109,7 +130,9 @@ unsigned int __stdcall ParticleUpdate(void* Data)
 }
 
 
-void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f32 dt)
+
+void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f32 dt, 
+          u32 *Heights, u32 Width, u32 Height, v3 *Normals)
 {
     ParticleSystem->P = (v3 *)calloc(ParticleCount, sizeof(v3));
     assert(ParticleSystem->P);
@@ -123,13 +146,13 @@ void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f
     ParticleSystem->Elapsed = (f32 *)calloc(ParticleCount, sizeof(f32));
     assert(ParticleSystem->Elapsed);
     
-    f32 Radius = 0.5f;
+    f32 Radius = 0.15f;
     f32 Angle = 0.0f;
     f32 Theta = Tau32 / (f32)ParticleCount;
     for (u32 Index = 0; Index < ParticleCount; ++Index)
     {
         ParticleSystem->P[Index] = ParticleSystem->Po;
-        ParticleSystem->Duration[Index] = 5.0f;
+        ParticleSystem->Duration[Index] = 8.0f;
         ParticleSystem->Elapsed[Index] = 0.0f;
         
         Angle += Theta;
@@ -150,11 +173,12 @@ void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f
     //
     // Multithreaded stuff
     ThreadCount = ThreadCount > 0 ? ThreadCount : 1;
-    ParticleSystem->ThreadCount = ThreadCount;
-    ParticleSystem->ThreadContext = (thread_context *)calloc(ParticleSystem->ThreadCount, sizeof(thread_context));
+    
+    ParticleSystem->ThreadContext = (thread_context *)calloc(ThreadCount, sizeof(thread_context));
     assert(ParticleSystem->ThreadContext);
     
     thread_context *ThreadContext = ParticleSystem->ThreadContext;
+    ThreadContext->ThreadCount = ThreadCount;
     
     u32 AllocatedIndices = 0;
     u32 ParticlesPerThread = ParticleCount / ThreadCount;
@@ -162,6 +186,10 @@ void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f
     for (u32 Index = 0; Index < ThreadCount; ++Index)
     {
         ThreadContext[Index].ParticleSystem = ParticleSystem;
+        ThreadContext[Index].Heights = Heights;
+        ThreadContext[Index].Normals = Normals;
+        ThreadContext[Index].Width = Width;
+        ThreadContext[Index].Height = Height;
         
         if (Index < ThreadCount - 1)
         {
@@ -212,7 +240,7 @@ void Init(particle_system *ParticleSystem, u32 ParticleCount, u32 ThreadCount, f
 void Update(particle_system *ParticleSystem)
 {
     thread_context *ThreadContext = ParticleSystem->ThreadContext;
-    for (u32 Index = 0; Index < ParticleSystem->ThreadCount; ++Index)
+    for (u32 Index = 0; Index < ThreadContext->ThreadCount; ++Index)
     {
         b32 Result = SetEvent(ThreadContext[Index].Simulate);
         if(!Result)
@@ -223,7 +251,7 @@ void Update(particle_system *ParticleSystem)
     
     //
     // Wait until all threads are finished
-    for (u32 Index = 0; Index < ParticleSystem->ThreadCount; ++Index)
+    for (u32 Index = 0; Index < ThreadContext->ThreadCount; ++Index)
     {
         WaitForSingleObject(ThreadContext[Index].Finished, INFINITE);
         ResetEvent(ThreadContext[Index].Finished);
@@ -231,17 +259,18 @@ void Update(particle_system *ParticleSystem)
 }
 
 
+
 void ShutDown(particle_system *ParticleSystem)
 {
     thread_context *ThreadContext = ParticleSystem->ThreadContext;
     
     ParticleSystem->IsSimulating = false;
-    for (u32 Index = 0; Index < ParticleSystem->ThreadCount; ++Index)
+    for (u32 Index = 0; Index < ThreadContext->ThreadCount; ++Index)
     {
         WaitForSingleObject(ThreadContext[Index].ThreadHandle, INFINITE);
     }
     
-    for (u32 Index = 0; Index < ParticleSystem->ThreadCount; ++Index)
+    for (u32 Index = 0; Index < ThreadContext->ThreadCount; ++Index)
     {
         b32 Result = CloseHandle(ThreadContext[Index].ThreadHandle);
         if(!Result)
@@ -254,9 +283,9 @@ void ShutDown(particle_system *ParticleSystem)
         }
     }
     
+    
     //
     // Free memory
-    // 
     if (ParticleSystem->P)
     {
         free(ParticleSystem->P);
