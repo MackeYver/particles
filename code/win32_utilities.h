@@ -45,18 +45,41 @@ static void UpdateMouseState(mouse_state *State)
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 {
     switch (uMsg) {
-        case WM_CREATE: {
+        case WM_CREATE: 
+        {
             // Get a pointer to the app_state struct and store it in the instance data of the window
             CREATESTRUCT *Create = reinterpret_cast<CREATESTRUCT *>(lParam);
             app_state *State = reinterpret_cast<app_state *>(Create->lpCreateParams);
             SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)State);
         } break;
         
-        case WM_KEYDOWN: {
+        case WM_KEYDOWN: 
+        {
+            
+#if 0
+            // Toggle the second light
+            if (wParam == 0x53) // S key
+            {
+                LONG_PTR Ptr = GetWindowLongPtr(hWnd, GWLP_USERDATA);
+                app_state *State = reinterpret_cast<app_state *>(Ptr);
+                
+                State->UseSecondLight = !State->UseSecondLight;
+                
+                if (State->UseSecondLight)
+                {
+                    printf("The second light source is on.\n");
+                }
+                else
+                {
+                    printf("The second light source is off.\n");
+                }
+            }
+#endif
             
         } break;
         
-        case WM_RBUTTONDOWN: {
+        case WM_RBUTTONDOWN: 
+        {
             LONG_PTR Ptr = GetWindowLongPtr(hWnd, GWLP_USERDATA);
             app_state *AppState = reinterpret_cast<app_state *>(Ptr);
             
@@ -67,7 +90,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             SetCapture(hWnd);
         } break;
         
-        case WM_RBUTTONUP: {
+        case WM_RBUTTONUP: 
+        {
             LONG_PTR Ptr = GetWindowLongPtr(hWnd, GWLP_USERDATA);
             app_state *AppState = reinterpret_cast<app_state *>(Ptr);
             
@@ -77,7 +101,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             ReleaseCapture();
         } break;
         
-        case WM_MOUSEWHEEL: {
+        case WM_MOUSEWHEEL: 
+        {
             s32 DeltaDistance = GET_Y_LPARAM(wParam);
             s32 Delta = GET_WHEEL_DELTA_WPARAM(wParam);
             f32 Distance = (f32)DeltaDistance / fabsf((f32)Delta);
@@ -87,7 +112,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             AppState->Camera.Distance -= Distance;
         } break;
         
-        case WM_DESTROY: {
+        case WM_DESTROY: 
+        {
             PostQuitMessage(0);
             return 0;
         } break;

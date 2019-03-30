@@ -70,6 +70,8 @@ struct app_state
     display_metrics Metrics; 
     
     HWND hWnd;
+    
+    b32 UseSecondLight = false;
 };
 
 #include "win32_utilities.h"
@@ -165,7 +167,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         ShaderConstants.NormalToWorldMatrix = m4_identity;
         ShaderConstants.CameraP = V4(AppState.Camera.P, 1.0f);
         ShaderConstants.Colour = V4(0.65f, 0.65f, 0.7f, 1.0f);
-        ShaderConstants.LightP = V4(-80.0f, 100.0f, -80.0f, 1.0f);
+        ShaderConstants.LightP = Normalize(V4(-80.0f, 100.0f, -80.0f, 0.0f));
         assert(sizeof(shader_constants) % 16 == 0);
         
         b32 Result = CreateConstantBuffer(&DirectXState, &ShaderConstants, sizeof(shader_constants), &ConstantBuffer);
@@ -207,7 +209,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         v3 Vertices[] =
         {
             {0.0f, 0.0f, 0.0f},
-            ShaderConstants.LightP.xyz(),
+            ShaderConstants.LightP.xyz() * 100.0f,
         };
         
         b32 Result;
@@ -280,7 +282,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
             {
                 f32 Height = (f32)Heights[Index];
                 
-#if 0
+#if 1
                 //
                 // Smoothing
                 u32 Count = 1;
@@ -315,12 +317,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
                 
                 Max = Height > Max ? Height : Max;
                 Min = Height < Min ? Height : Min;
-                
-                if (z == 0 && x == 0)
-                {
-                    Heights[Index] = 200;
-                    Height = (f32)Heights[Index];
-                }
                 
                 Vertices[Index++] = V3((f32)x, Height, (f32)z);
             }
@@ -617,14 +613,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
         
         ShaderConstants.ViewToClipMatrix = GetViewToClipMatrix(&AppState.Camera);
         ShaderConstants.WorldToViewMatrix = GetWorldToViewMatrix(&AppState.Camera);
-        ShaderConstants.ObjectToWorldMatrix = m4_identity;
-        ShaderConstants.NormalToWorldMatrix = m4_identity;
         ShaderConstants.CameraP = V4(AppState.Camera.P, 1.0f);
         
         
         // Light directions
         {
             ShaderConstants.Colour = V4(1.0f, 1.0f, 0.0f, 1.0f);
+            ShaderConstants.ObjectToWorldMatrix = m4_identity;
+            ShaderConstants.NormalToWorldMatrix = m4_identity;
             UpdateBuffer(&DirectXState, &ConstantBuffer, &ShaderConstants, nullptr);
             
             SetShader(&DirectXState, &DirectXState.vBasic);
@@ -634,7 +630,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
             v3 v[] = 
             {
                 {0.0f, 0.0f, 0.0f},
-                ShaderConstants.LightP.xyz(),
+                ShaderConstants.LightP.xyz() * 100.0f,
             };
             UpdateBuffer(&DirectXState, &RenderableLightDirection.VertexBuffer, v, nullptr);
             
@@ -645,10 +641,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hInstancePrev, LPSTR lpCmdLine
 #if 1
         // Render Terrain
         {
-            ShaderConstants.Colour = V4(0.65f, 0.65f, 0.7f, 1.0f);
+            ShaderConstants.Colour = V4(0.75f, 0.75f, 0.7f, 1.0f);
             ShaderConstants.ObjectToWorldMatrix = M4Translation(V3(-30.5f, -140.0f, -43.5f));
-            //ShaderConstants.ObjectToWorldMatrix = m4_identity;
             
+            // The normal matrix
             b32 Invertible;
             m4 Mi = M4Inverse(&ShaderConstants.ObjectToWorldMatrix, &Invertible);
             assert(Invertible);

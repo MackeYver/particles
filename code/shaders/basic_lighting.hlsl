@@ -52,9 +52,9 @@ vs_out vMain(vs_in In)
 	Result.Pw = mul(float4(In.P, 1.0f), ObjectToWorld);
 	Result.Nw = mul(float4(In.N, 0.0f), NormalToWorld);
 
-	float3 Gray  = float3(0.5f, 0.55f, 0.5f);
-	float3 Black = float3(0.15f, 0.15f, 0.15f);
-	float f = In.P.y / 101.0f;
+	float3 Gray  = float3(0.55f, 0.55f, 0.5f);
+	float3 Black = float3(0.25f, 0.25f, 0.25f);
+	float f = (In.P.y - 94.0f) / 101.0f;
 	Result.Co = float4(lerp(Gray, Black, f), 1.0f);
 
 	return Result;
@@ -63,24 +63,55 @@ vs_out vMain(vs_in In)
 
 //
 // Pixel shader
-float4 pMain(vs_out In) : SV_TARGET
+float4 pMain(vs_out In) : SV_Target
 {
-	// All is done in world space
-	float3 L = normalize(LightP.xyz - In.Pw.xyz);	
+	//
+	// All light calculations are done in world space
+	float3 L = normalize(LightP.xyz - normalize(In.Pw.xyz));
 	float3 N = normalize(In.Nw.xyz);
-	//float4 E = normalize(CameraP - In.Pw);
-
 	float3 ResultantColour = (Colour.rgb * In.Co.rgb);
-	float AmbientIntensity = 0.3f;
-	float3 AmbientLight = ResultantColour * AmbientIntensity;
 
-	float DiffuseIntensity = max(dot(N, L), 0.0);
+
+	//
+	// Diffuse
+	float DiffuseFactor = 0.5f;
+	float DiffuseIntensity = DiffuseFactor * saturate(dot(N, L));
 	float3 DiffuseLight = ResultantColour * DiffuseIntensity;
 
-#if 0
+
+	//
+	// Ambient
+	float AmbientFactor = 0.5f;
+	float AmbientIntensity = 0.0f;
+#if 1
+	L = float3(1.0f, 0.0, 0.0f);
+	AmbientIntensity += AmbientFactor * saturate(dot(N, L));
+
+	L = float3(-1.0f, 0.0, 0.0f);
+	AmbientIntensity += AmbientFactor * saturate(dot(N, L));
+
+	L = float3(0.0f, 1.0, 0.0f);
+	AmbientIntensity += AmbientFactor * saturate(dot(N, L));
+
+	L = float3(0.0f, -1.0, 0.0f);
+	AmbientIntensity += AmbientFactor * saturate(dot(N, L));
+
+	L = float3(0.0f, 0.0, 1.0f);
+	AmbientIntensity += AmbientFactor * saturate(dot(N, L));		
+
+	L = float3(0.0f, 0.0, -1.0f);
+	AmbientIntensity += AmbientFactor * saturate(dot(N, L));		
+#endif
+
+	float3 AmbientLight = In.Co.rgb * AmbientIntensity;
+
+
+	//
+	// Result
+#if 1
 	return float4(AmbientLight + DiffuseLight, 1.0f);
 #else
-	return float4(In.Nw.xyz, 1.0f);
-//	return float4(N, 1.0f);
+//	return float4(In.Nw.xyz, 1.0f);
+	return float4(N, 1.0f);
 #endif
 }
