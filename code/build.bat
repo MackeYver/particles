@@ -24,7 +24,7 @@ REM Compiler Options
 REM https://docs.microsoft.com/en-us/cpp/build/reference/compiler-options-listed-alphabetically?view=vs-2017
 
 SET IgnoredWarnings=/wd4100 /wd4201 /wd4505
-SET GeneralCompilerOptions=/nologo /WL /fp:fast /fp:except- /EHsc /Gm- /Oi /FC /WX /W4 !IgnoredWarnings!
+SET GeneralCompilerOptions=/nologo /WL /MP /fp:fast /fp:except- /EHsc /Gm- /Oi /FC /WX /W4 !IgnoredWarnings!
 
 IF %BuildMode%=="release" (
   ECHO Release mode
